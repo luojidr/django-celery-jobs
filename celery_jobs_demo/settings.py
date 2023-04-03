@@ -118,11 +118,11 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Shanghai'
 
 USE_I18N = True
 
-USE_TZ = True
+USE_TZ = False
 
 
 # Static files (CSS, JavaScript, Images)
@@ -162,4 +162,6 @@ CACHES = {
 }
 
 # Set Celery App Path
-CELERY_APP = 'celery_jobs_demo.celery:celery_app'
+# CELERY_APP = 'celery_jobs_demo.celery:celery_app'
+CELERY_APP = 'celery_jobs_demo.t_celery:app'
+DJANGO_CELERY_BEAT_TZ_AWARE = False

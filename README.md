@@ -60,3 +60,30 @@ You can install it by doing the following,:
 
 The last command must be executed as a privileged user if you are not
 currently using a virtualenv.
+
+Errors:  
+(1): Celery beat start :  
+```
+    File "D:\workplace\py_workship\django-celery-jobs\venv\lib\site-packages\celery\bin\beat.py", line 72, in beat
+        return beat().run()
+    File "D:\workplace\py_workship\django-celery-jobs\venv\lib\site-packages\celery\apps\beat.py", line 77, in run
+        self.start_scheduler()
+    File "D:\workplace\py_workship\django-celery-jobs\venv\lib\site-packages\celery\apps\beat.py", line 105, in start_scheduler
+        service.start()
+    File "D:\workplace\py_workship\django-celery-jobs\venv\lib\site-packages\celery\beat.py", line 651, in start
+        self.scheduler._do_sync()
+    ......
+    File "D:\workplace\py_workship\django-celery-jobs\venv\lib\site-packages\django\db\backends\mysql\operations.py", line 268, in adapt_datetimefield_value
+        raise ValueError(
+    ValueError: MySQL backend does not support timezone-aware datetimes when USE_TZ is False.
+```  
+
+celery conf:  
+ ```python
+    timezone = 'Asia/Shanghai'  
+    enable_utc = False 
+```  
+django conf:  
+```python
+    DJANGO_CELERY_BEAT_TZ_AWARE  = False
+```

@@ -35,7 +35,14 @@ class BaseService:
 
             proj = django_settings_module.split(".", 1)[0]
 
-        return "%s.celery" % proj
+        try:
+            app_path = settings.CELERY_APP
+            pkg_name = app_path.split(":", 1)[0]
+            app_module = pkg_name.rsplit('.', 1)[-1]
+        except (ModuleNotFoundError, IndexError):
+            app_module = 'celery'
+
+        return "%s.%s" % (proj, app_module)
 
     def start(self):
         raise NotImplementedError
