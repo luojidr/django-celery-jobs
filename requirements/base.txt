@@ -1,0 +1,16 @@
+django>=3.1.14,<=4.1.7
+django-extensions>=3.0.9
+djangorestframework>=3.12.1
+django-environ>=0.4.5
+bson>=0.5.10
+loguru>=0.6.0
+python-dotenv>=0.21.0
+pyyaml>=6.0
+mysqlclient>=2.0.2
+pycryptodome>=3.9.8
+celery>=5.0.0,<6.0
+django-celery-results>=2.3.1
+django-celery-beat>=2.4.0
+psutil>=5.9.4
+deprecated>=1.2.0
+redis>=3.0.0
