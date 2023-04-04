@@ -17,9 +17,11 @@ app = Celery('testCelery')
 platforms.C_FORCE_ROOT = True
 
 app.conf.broker_url = 'amqp://admin:admin013431_Prd@47.96.113.102:5672/%2Ftest'
+app.conf.result_backend = 'django-db'
 app.conf.beat_scheduler = "django_celery_beat.schedulers:DatabaseScheduler"
 app.conf.timezone = "Asia/Shanghai"
 app.conf.enable_utc = False
+
 
 @app.task(bind=True)
 def debug_task(self):

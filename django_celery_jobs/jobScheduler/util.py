@@ -1,3 +1,4 @@
+import socket
 import logging
 import importlib
 import traceback
@@ -30,3 +31,14 @@ def get_celery_app():
         raise ImproperlyConfigured("Celery instance is empty, recommended set `CELERY_APP`")
 
     return _default_app
+
+
+def get_ip_addr():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+    finally:
+        s.close()
+
+    return ip
