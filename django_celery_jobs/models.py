@@ -1,3 +1,4 @@
+import re
 import logging
 import platform
 import traceback
@@ -9,7 +10,7 @@ from django.contrib.auth import get_user_model
 from celery import states
 from celery.schedules import crontab
 from celery.utils.nodenames import default_nodename
-from django_celery_beat.models import PeriodicTask, CrontabSchedule
+from django_celery_beat.models import PeriodicTask, CrontabSchedule, CrontabSchedule
 from django_celery_results.models import TaskResult, TASK_STATE_CHOICES
 
 from .jobScheduler.util import get_ip_addr
@@ -28,7 +29,9 @@ class BaseAbstractModel(models.Model):
 
     @classmethod
     def fields(cls):
-        return [f.name for f in cls._meta.concrete_fields]
+        # cls._meta.concrete_fields
+        abc_fields = [_field.name for _field in BaseAbstractModel._meta.fields]
+        return [f.name for f in cls._meta.fields if f.name not in abc_fields]
 
     @classmethod
     def create_object(cls, **kwargs):
@@ -37,6 +40,15 @@ class BaseAbstractModel(models.Model):
         new_kwargs = {key: value for key, value in kwargs.items() if key in fields}
 
         return cls.objects.create(**new_kwargs)
+
+    def save_attrs(self, **attrs):
+        fields = self.fields()
+        cleaned_attrs = {name: value for name, value in attrs.items() if name in fields}
+
+        for name, value in cleaned_attrs.items():
+            setattr(self, name, value)
+
+        cleaned_attrs and self.save()
 
     @classmethod
     def add_result(cls, **kwargs):
@@ -51,47 +63,68 @@ class BaseAbstractModel(models.Model):
             logging.error(traceback.format_exc())
 
 
-class BrokerConfigModel(BaseAbstractModel):
-    user = models.ForeignKey(to=UserModel, default=None, null=True, on_delete=models.SET_NULL)
-    transport = models.CharField(verbose_name="Transport", max_length=50, default='', blank=True)
-    broker_user = models.CharField(verbose_name="Broker User", max_length=50, default='', blank=True)
-    broker_pwd = models.CharField(verbose_name="Broker Password", max_length=200, default='', blank=True)
-    broker_host = models.CharField(verbose_name="Broker Host", max_length=50, default='', blank=True)
-    broker_port = models.IntegerField(verbose_name="Broker Port", default=0, blank=True)
-    broker_virtual = models.CharField(verbose_name="Broker Virtual Host", max_length=50, default='')
+class JobConfigModel(BaseAbstractModel):
+    CATEGORY_CHOICES = [
+        (1, 'broker'),  # Celery Broker
+        (2, 'ssh'),     # Local or Remote to execute command
+        (3, 'http'),    # Http Request to api
+    ]
+    AS_URI = {
+        'broker': '{transport}://{user}:{password}@{host}:{port}/{virtual_host}',
+        'http:': '{transport}://{host}/'
+    }
+
+    owner = models.ForeignKey(to=UserModel, default=None, null=True, on_delete=models.SET_NULL)
+    transport = models.CharField("Transport", max_length=50, default='', blank=True)
+    user = models.CharField("User", max_length=50, default='', blank=True)
+    pwd = models.CharField("Password", max_length=200, default='', blank=True)
+    host = models.CharField("Host", max_length=50, default='', blank=True)
+    port = models.IntegerField("Port", default=0, blank=True)
+    virtual = models.CharField("Broker Virtual Host", max_length=50, default='', blank=True)
+
+    # 公私钥 | http
+
+    category = models.SmallIntegerField("Config Category", choices=CATEGORY_CHOICES, default=0, blank=True)
 
     class Meta:
-        db_table = 'django_celery_jobs_broker_config'
+        db_table = 'django_celery_jobs_config'
         ordering = ["-id"]
 
-    def get_broker_url(self):
-        """ {transport}://{user}:{password}@{host}:{port}/{virtual_host}
-        eg: amqp://admin:adminp@127.0.0.1:5672/%2Ftest
-        """
-        broker_kwargs = dict(
+    def as_url(self):
+        uri_kwargs = dict(
             transport=self.transport,
-            user=self.broker_user, password=self.broker_pwd,
-            host=self.broker_host, port=self.broker_port,
-            virtual_host=quote_plus(self.broker_virtual),
+            user=self.user, password=self.pwd,
+            host=self.host, port=self.port,
+            virtual_host=quote_plus(self.virtual),
         )
-        broker_fmt = "{transport}://{user}:{password}@{host}:{port}/{virtual_host}"
-        broker_url = broker_fmt.format(**broker_kwargs)
 
-        return broker_url
+        if self.category == 1:
+            as_uri = '{transport}://{user}:{password}@{host}:{port}/{virtual_host}'
+        else:
+            raise ValueError("Not Implement.")
+
+        return as_uri.format(**uri_kwargs)
 
 
 class PeriodicJobModel(BaseAbstractModel):
     title = models.CharField("Task Title", max_length=500, default='')
-    broker = models.ForeignKey(to=BrokerConfigModel, related_name="broker",
+    config = models.ForeignKey(to=JobConfigModel, related_name="config",
                                default=None, null=True, on_delete=models.SET_NULL)
     periodic_task = models.ForeignKey(to=PeriodicTask, related_name="periodic_task",
                                       default=None, null=True, on_delete=models.SET_NULL)
+    crontab = models.ForeignKey(to=CrontabSchedule, related_name="crontab",
+                                default=None, null=True, on_delete=models.SET_NULL)
     enabled = models.BooleanField("Start or not", default=False, blank=True)
     queue_name = models.CharField("Queue Name", max_length=200, default='')
     exchange_name = models.CharField("Exchange Name", max_length=200, default='')
     routing_key = models.CharField("Route Key", max_length=200, default='')
     func_name = models.CharField("Func Name", max_length=100, default='')
     task_source_code = models.CharField("Task Source Code", max_length=5000, default='')
+
+    # SSH 执行脚本(本地或远程, 一种定时任务的实现) paramiko
+    # directory = models.CharField("Directory where the command is executed", max_length=1000, default='')
+    # command = models.CharField("Script execution command", max_length=1000, default='')
+
     remark = models.CharField("remark", max_length=1000, default='')
 
     class Meta:
@@ -106,19 +139,18 @@ class PeriodicJobModel(BaseAbstractModel):
         if not self.task_source_code:
             return
 
-        namespace = {}
-        exec(self.task_source_code.strip(), namespace)
-        func = namespace.get(self.func_name)
+        func_obj = None
+        namespace = {'__builtins__': {}}
+        func_source_code = self.task_source_code.strip()
+        exec(func_source_code, namespace)
 
-        assert func, "Periodic Job<fun:%s> has'nt source code" % self.func_name
-        return func
+        for name, obj in namespace.items():
+            if callable(obj) and getattr(obj, "__name__", None) == name:
+                func_obj = obj
+                break
 
-    def get_crontab(self):
-        cron_obj = CrontabSchedule.objects.get(id=self.periodic_task.crontab.id)
-        return crontab(
-            minute=cron_obj.minute, hour=cron_obj.hour, day_of_week=cron_obj.day_of_week,
-            day_of_month=cron_obj.day_of_month, month_of_year=cron_obj.month_of_year
-        )
+        assert func_obj, "PeriodicJobModel<id:%s> hasn't source code" % self.id
+        return func_obj
 
 
 class CeleryPeriodicJobModel(PeriodicTask):
@@ -145,17 +177,12 @@ class JobScheduledResultModel(BaseAbstractModel):
 
     @classmethod
     def update_scheduled_result(cls, sched_id, **attrs):
-        fields = cls.fields()
         sched_obj = cls.objects.filter(sched_id=sched_id).first()
 
         if not sched_obj:
             return
 
-        for name, value in attrs.items():
-            if name in fields:
-                setattr(sched_obj, name, value)
-
-        sched_obj.save()
+        sched_obj.save_attrs(**attrs)
 
 
 class JobRunnerResultModel(BaseAbstractModel):

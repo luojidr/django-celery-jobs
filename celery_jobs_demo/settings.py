@@ -164,4 +164,7 @@ CACHES = {
 # Set Celery App Path
 # CELERY_APP = 'celery_jobs_demo.celery:celery_app'
 CELERY_APP = 'celery_jobs_demo.t_celery:app'
+
+# Celery Beat Start Raise:
+#     ValueError: MySQL backend does not support timezone-aware datetimes when USE_TZ is False
 DJANGO_CELERY_BEAT_TZ_AWARE = False

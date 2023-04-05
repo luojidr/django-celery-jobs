@@ -15,31 +15,47 @@ from django.utils import timezone
 from celery.utils import cached_property
 from celery.schedules import schedstate
 
+from django.db.models.base import ModelBase
 from django.core.cache import caches
 from django.core.cache.backends.redis import RedisCache
+
+from .app import DispatchApp
 
 logger = logging.getLogger("celery.worker")
 PERIODIC_TASK_CACHE = {}
 
 
+class ModelDict(dict):
+    def __getattr__(self, name):
+        if name not in self:
+            raise AttributeError('No `%s` attribute' % name)
+
+        return self[name]
+
+
 class MyScheduler(Scheduler):
     @cached_property
-    def JobScheduledResult(self):
-        from django_celery_jobs.models import JobScheduledResultModel
+    def Models(self):
+        from django_celery_jobs import models
 
-        return JobScheduledResultModel
+        _models = ModelDict()
+        app_name = __name__.split('.', 1)[0]
 
-    @cached_property
-    def PeriodicJob(self):
-        from django_celery_jobs.models import PeriodicJobModel
+        for key, model in models.__dict__.items():
+            if key.startswith('_') or key[0].islower():
+                continue
 
-        return PeriodicJobModel
+            if not isinstance(model, ModelBase):
+                continue
 
-    @classmethod
-    def DatabaseScheduler(cls):
-        from django_celery_beat.schedulers import DatabaseScheduler
+            meta = model._meta
+            if meta.app_label != app_name or meta.abstract:
+                continue
 
-        return DatabaseScheduler
+            model_name = meta.object_name
+            _models[model_name.split('Model')[0]] = model
+
+        return _models
 
     @cached_property
     def redis_conn(self):
@@ -96,19 +112,27 @@ class MyScheduler(Scheduler):
             scheduled_kw.update(is_success=False, traceback=exc_info[-2800:])
         finally:
             if is_scheduled:
-                self.JobScheduledResult.add_result(**scheduled_kw)
+                self.Models.JobScheduledResult.add_result(**scheduled_kw)
 
-        logger.warning("%s<%s> apply scheduled<%s> passed, now: %s", *(log_args + [datetime.now()]))
+        # logger.warning("%s<%s> apply scheduled<%s> passed, now: %s", *(log_args + [datetime.now()]))
         return schedstate(is_due=False, next=next_run_time)
 
     def apply_async(self, entry, producer=None, advance=True, **kwargs):
         exc_info = ''
         entry = self.reserve(entry) if advance else entry
         task = self.app.tasks.get(entry.task)
+        logger.warning("[%s] >>> task<%s> scheduled, now: %s", __name__, task.name, datetime.now())
 
         try:
             entry_args = _evaluate_entry_args(entry.args)
             entry_kwargs = _evaluate_entry_kwargs(entry.kwargs)
+
+            # The timing message is sent to different MQ servers
+            dispatch_app = DispatchApp(self, entry=entry)
+            if not dispatch_app.is_default_app(name=entry.task):
+                dispatch_task = dispatch_app.get_task()
+                return dispatch_task.apply_async(entry_args, entry_kwargs, producer=None, **entry.options)
+
             if task:
                 return task.apply_async(entry_args, entry_kwargs, producer=producer, **entry.options)
             else:
@@ -126,7 +150,7 @@ class MyScheduler(Scheduler):
                 self._do_sync()
 
             if exc_info:
-                self.JobScheduledResult.update_scheduled_result(
+                self.Models.JobScheduledResult.update_scheduled_result(
                     sched_id=entry.sched_id,
                     traceback=exc_info
                 )
@@ -136,21 +160,21 @@ class MyScheduler(Scheduler):
 
         try:
             cached_ids = [item['id'] for item in PERIODIC_TASK_CACHE.values()]
-            enable_queryset = self.PeriodicJob.get_enabled_tasks().exclude(id__in=cached_ids).all()
+            enable_queryset = self.Models.PeriodicJob.get_enabled_tasks().exclude(id__in=cached_ids).all()
 
-            for task_obj in enable_queryset:
-                self._update_schedule(periodic_task_obj=task_obj)
+            for job_obj in enable_queryset:
+                self._update_schedule(periodic_job_obj=job_obj)
         except Exception as e:
             logger.error("[%s] >>> schedule_changed err: %s", __name__, e)
             logger.error(traceback.format_exc())
 
         return is_changed
 
-    def _update_schedule(self, periodic_task_obj):
-        task_pk = periodic_task_obj.id
+    def _update_schedule(self, periodic_job_obj):
+        task_pk = periodic_job_obj.id
 
         if task_pk not in PERIODIC_TASK_CACHE:
-            func = periodic_task_obj.compile_task_func()
+            func = periodic_job_obj.compile_task_func()
             if not func:
                 return
 
@@ -161,20 +185,25 @@ class MyScheduler(Scheduler):
             # entry: celery_app.conf.beat_schedule
             entry_fields = dict(
                 task=task_name, args=(), kwargs={},
-                schedule=periodic_task_obj.get_crontab(),
+                schedule=periodic_job_obj.crontab.schedule,
                 options={'expire_seconds': None},
             )
 
-            periodic_task_obj.func_name = task_name
-            periodic_task_obj.save()
+            update_attrs = dict()
+            entry = self.Entry.from_entry(task_name, app=self.app, **entry_fields)
 
-            self.Entry.from_entry(task_name, app=self.app, **entry_fields)
+            if not periodic_job_obj.func_name.strip():
+                update_attrs['func_name'] = func.__name__
+
+            if not periodic_job_obj.periodic_task:
+                update_attrs['periodic_task'] = entry.model
+            periodic_job_obj.save_attrs(**update_attrs)
+
             PERIODIC_TASK_CACHE[task_pk] = dict(id=task_pk, func=func)
 
     Scheduler.is_due = is_due
+    Scheduler.Models = Models
     Scheduler.redis_conn = redis_conn
     Scheduler.apply_async = apply_async
     Scheduler._update_schedule = _update_schedule
-    Scheduler.PeriodicJob = PeriodicJob
-    Scheduler.JobScheduledResult = JobScheduledResult
 
