@@ -33,7 +33,7 @@ class ModelDict(dict):
         return self[name]
 
 
-class MyScheduler(Scheduler):
+class BeatScheduler(Scheduler):
     @cached_property
     def Models(self):
         from django_celery_jobs import models

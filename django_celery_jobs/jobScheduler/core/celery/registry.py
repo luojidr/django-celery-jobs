@@ -1,6 +1,7 @@
 import logging
+from datetime import datetime
 
-from celery.signals import beat_init, celeryd_init, setup_logging, task_internal_error
+from celery.signals import beat_init, celeryd_init, task_internal_error
 
 from .util import find_tasks
 
@@ -8,7 +9,7 @@ logger = logging.getLogger("celery.worker")
 
 
 @celeryd_init.connect
-def register_tasks_by_worker(sender, instance, conf, options, **kwargs):
+def load_worker(sender, instance, conf, options, **kwargs):
     logging.warning("Sender<%s> instance: %s, conf: %s, options: %s", sender, instance, conf, options)
 
     if not conf.result_backend:
@@ -18,20 +19,17 @@ def register_tasks_by_worker(sender, instance, conf, options, **kwargs):
 
 
 @beat_init.connect
-def register_tasks_by_beat(sender, **kwargs):
-    logging.warning('scheduler_middleware => sender: %s, kwargs: %s', sender, kwargs)
+def load_beat(sender, **kwargs):
+    logging.warning('BeatScheduler must be injected first, now: %s', datetime.now())
+    logging.warning('BeatScheduler => sender: %s, kwargs: %s', sender, kwargs)
+
     find_tasks()
 
-
-@setup_logging.connect
-def inject_database_scheduler(**kwargs):
-    logging.warning('DatabaseScheduler must be injected first.')
-
     from django_celery_beat.schedulers import DatabaseScheduler
-    from django_celery_jobs.jobScheduler.core.celery.patch import MyScheduler
+    from django_celery_jobs.jobScheduler.core.celery.patch import BeatScheduler
 
     DatabaseScheduler._schedule_changed = DatabaseScheduler.schedule_changed
-    DatabaseScheduler.schedule_changed = MyScheduler.schedule_changed
+    DatabaseScheduler.schedule_changed = BeatScheduler.schedule_changed
 
 
 @task_internal_error.connect
