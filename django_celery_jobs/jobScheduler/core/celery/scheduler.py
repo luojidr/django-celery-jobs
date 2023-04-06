@@ -19,6 +19,7 @@ from django.core.cache.backends.redis import RedisCache
 from django_celery_beat.schedulers import DatabaseScheduler
 
 from .app import CeleryAppDispatcher
+from django_celery_jobs import models
 
 logger = logging.getLogger("celery.worker")
 PERIODIC_TASK_CACHE = {}
@@ -35,8 +36,6 @@ class ModelDict(dict):
 class BeatScheduler(DatabaseScheduler):
     @cached_property
     def Models(self):
-        from django_celery_jobs import models
-
         _models = ModelDict()
         app_name = __name__.split('.', 1)[0]
 
