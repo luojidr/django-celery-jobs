@@ -9,7 +9,6 @@ from django.utils.functional import cached_property
 
 from celery.apps.beat import Beat
 
-from django_celery_jobs.jobScheduler.exceptions import CeleryAppError
 from django_celery_jobs.jobScheduler.util import get_celery_app
 
 

@@ -1,2 +1,1 @@
-from .jobScheduler.core.celery.patch import *
-from .jobScheduler.core.celery.registry import *
+from .jobScheduler.core import celery

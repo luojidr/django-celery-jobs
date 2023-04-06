@@ -1,9 +1,9 @@
 import logging
 from datetime import datetime
 
-from celery.signals import beat_init, celeryd_init, task_internal_error
+from celery.signals import beat_init, celeryd_init, task_internal_error, import_modules
 
-from .util import find_tasks
+from .util import autodiscover_tasks
 
 logger = logging.getLogger("celery.worker")
 
@@ -15,21 +15,18 @@ def load_worker(sender, instance, conf, options, **kwargs):
     if not conf.result_backend:
         logger.warning("Setting `result_backend` is strongly recommended.")
 
-    find_tasks()
-
 
 @beat_init.connect
 def load_beat(sender, **kwargs):
     logging.warning('BeatScheduler must be injected first, now: %s', datetime.now())
     logging.warning('BeatScheduler => sender: %s, kwargs: %s', sender, kwargs)
 
-    find_tasks()
 
-    from django_celery_beat.schedulers import DatabaseScheduler
-    from django_celery_jobs.jobScheduler.core.celery.patch import BeatScheduler
+@import_modules.connect
+def discover_tasks(sender, **kwargs):
+    logging.warning('discover_tasks => sender: %s, kwargs: %s, now: %s', sender, kwargs, datetime.now())
 
-    DatabaseScheduler._schedule_changed = DatabaseScheduler.schedule_changed
-    DatabaseScheduler.schedule_changed = BeatScheduler.schedule_changed
+    autodiscover_tasks()
 
 
 @task_internal_error.connect

@@ -6,12 +6,12 @@ import traceback
 from celery import Celery
 from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
 
-from .util import change_task_router
+from .util import handle_task_router
 
 logger = logging.getLogger("celery.worker")
 
 
-class DispatchApp:
+class CeleryAppDispatcher:
     APPS_CACHE = {}
 
     def __init__(self, scheduler, entry, **kwargs):
@@ -44,7 +44,7 @@ class DispatchApp:
 
         task = celery_app.task(func, name=task_name)
         celery_app.tasks.register(task)
-        change_task_router(task=task, app=celery_app)
+        handle_task_router(task=task, app=celery_app)
 
         return task
 

@@ -7,19 +7,18 @@ import platform
 import traceback
 from datetime import datetime
 
-from celery.beat import Scheduler
-from celery.beat import SchedulingError
 from celery.beat import _evaluate_entry_args, _evaluate_entry_kwargs
-from celery.exceptions import reraise
-from django.utils import timezone
 from celery.utils import cached_property
 from celery.schedules import schedstate
 
+from django.utils import timezone
 from django.db.models.base import ModelBase
 from django.core.cache import caches
 from django.core.cache.backends.redis import RedisCache
 
-from .app import DispatchApp
+from django_celery_beat.schedulers import DatabaseScheduler
+
+from .app import CeleryAppDispatcher
 
 logger = logging.getLogger("celery.worker")
 PERIODIC_TASK_CACHE = {}
@@ -33,7 +32,7 @@ class ModelDict(dict):
         return self[name]
 
 
-class BeatScheduler(Scheduler):
+class BeatScheduler(DatabaseScheduler):
     @cached_property
     def Models(self):
         from django_celery_jobs import models
@@ -78,7 +77,6 @@ class BeatScheduler(Scheduler):
         logger.error('Fuck, redis client not find from settings.CACHES')
 
     def is_due(self, entry):
-        entry.sched_id = str(uuid.uuid1()).replace('-', '')
         sched_state = (_, next_run_time) = entry.is_due()
         uniq_val = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(22))
 
@@ -98,7 +96,7 @@ class BeatScheduler(Scheduler):
         # distributed locks are used to ensure that only one scheduler is triggered in during `wakeup_interval`
         is_scheduled = False
         run_date = timezone.now()
-        scheduled_kw = dict(sched_id=entry.sched_id, name=key,
+        scheduled_kw = dict(sched_id=str(uuid.uuid1()).replace('-', ''), name=key,
                             periodic_task_id=entry.model.id, is_success=True, run_date=run_date)
 
         try:
@@ -118,45 +116,25 @@ class BeatScheduler(Scheduler):
         return schedstate(is_due=False, next=next_run_time)
 
     def apply_async(self, entry, producer=None, advance=True, **kwargs):
-        exc_info = ''
         entry = self.reserve(entry) if advance else entry
         task = self.app.tasks.get(entry.task)
+
         logger.warning("[%s] >>> task<%s> scheduled, now: %s", __name__, task.name, datetime.now())
 
-        try:
-            entry_args = _evaluate_entry_args(entry.args)
-            entry_kwargs = _evaluate_entry_kwargs(entry.kwargs)
+        entry_args = _evaluate_entry_args(entry.args)
+        entry_kwargs = _evaluate_entry_kwargs(entry.kwargs)
 
-            # The timing message is sent to different MQ servers
-            dispatch_app = DispatchApp(self, entry=entry)
-            if not dispatch_app.is_default_app(name=entry.task):
-                dispatch_task = dispatch_app.get_task()
-                return dispatch_task.apply_async(entry_args, entry_kwargs, producer=None, **entry.options)
+        # The timing message is sent to different MQ servers
+        dispatcher = CeleryAppDispatcher(self, entry=entry)
 
-            if task:
-                return task.apply_async(entry_args, entry_kwargs, producer=producer, **entry.options)
-            else:
-                return self.send_task(entry.task, entry_args, entry_kwargs, producer=producer, **entry.options)
-        except Exception as exc:
-            exc_info = traceback.format_exc()[-2800:]
-            reraise(
-                SchedulingError,
-                SchedulingError("Couldn't apply scheduled task {0.name}: {exc}".format(entry, exc=exc)),
-                sys.exc_info()[2]
-            )
-        finally:
-            self._tasks_since_sync += 1
-            if self.should_sync():
-                self._do_sync()
-
-            if exc_info:
-                self.Models.JobScheduledResult.update_scheduled_result(
-                    sched_id=entry.sched_id,
-                    traceback=exc_info
-                )
+        if not dispatcher.is_default_app(name=entry.task):
+            dispatch_task = dispatcher.get_task()
+            return dispatch_task.apply_async(entry_args, entry_kwargs, producer=None, **entry.options)
+        else:
+            return super().apply_async(entry, producer, advance, **kwargs)
 
     def schedule_changed(self):
-        is_changed = self._schedule_changed()
+        is_changed = super().schedule_changed()
 
         try:
             cached_ids = [item['id'] for item in PERIODIC_TASK_CACHE.values()]
@@ -200,10 +178,3 @@ class BeatScheduler(Scheduler):
             periodic_job_obj.save_attrs(**update_attrs)
 
             PERIODIC_TASK_CACHE[task_pk] = dict(id=task_pk, func=func)
-
-    Scheduler.is_due = is_due
-    Scheduler.Models = Models
-    Scheduler.redis_conn = redis_conn
-    Scheduler.apply_async = apply_async
-    Scheduler._update_schedule = _update_schedule
-

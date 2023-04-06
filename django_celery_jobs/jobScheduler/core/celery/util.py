@@ -11,7 +11,7 @@ from django_celery_jobs import tasks
 logger = logging.getLogger("celery.worker")
 
 
-def change_task_router(task, app=None):
+def handle_task_router(task, app=None):
     task_name = task.name
     name = task_name.rsplit('.', 1)[-1]
     celery_app = app or current_app
@@ -48,7 +48,7 @@ def change_task_router(task, app=None):
             celery_app.conf.task_routes = dict(**route)
 
 
-def find_tasks():
+def autodiscover_tasks():
     task_list = []
 
     for module_info in pkgutil.iter_modules(tasks.__path__, tasks.__name__ + "."):
@@ -64,7 +64,7 @@ def find_tasks():
                     obj = getattr(mod, name)
                     if isinstance(obj, Task):
                         task_list.append(obj.name)
-                        change_task_router(obj)
+                        handle_task_router(obj)
             except (ImportError, ModuleNotFoundError):
                 logger.error('import module: %s error.', task_module_path)
 
