@@ -6,9 +6,9 @@ from urllib.parse import quote_plus
 
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.core.validators import MaxValueValidator
 
 from celery import states
-from celery.schedules import crontab
 from celery.utils.nodenames import default_nodename
 from django_celery_beat.models import PeriodicTask, CrontabSchedule, CrontabSchedule
 from django_celery_results.models import TaskResult, TASK_STATE_CHOICES
@@ -107,14 +107,22 @@ class JobConfigModel(BaseAbstractModel):
 
 
 class PeriodicJobModel(BaseAbstractModel):
-    title = models.CharField("Task Title", max_length=500, default='')
+    title = models.CharField("Task Title", unique=True, max_length=500, default='')
     config = models.ForeignKey(to=JobConfigModel, related_name="config",
                                default=None, null=True, on_delete=models.SET_NULL)
     periodic_task = models.ForeignKey(to=PeriodicTask, related_name="periodic_task",
                                       default=None, null=True, on_delete=models.SET_NULL)
     crontab = models.ForeignKey(to=CrontabSchedule, related_name="crontab",
                                 default=None, null=True, on_delete=models.SET_NULL)
-    enabled = models.BooleanField("Start or not", default=False, blank=True)
+    is_enabled = models.BooleanField("Start or not", default=False, blank=True)
+    args = models.JSONField('Positional Arguments', blank=True, default=list)
+    kwargs = models.JSONField('Keyword Arguments', blank=True, default=dict)
+    priority = models.PositiveIntegerField(
+        'Priority', validators=[MaxValueValidator(255)], default=None, blank=True,
+        null=True, help_text='Priority Number between 0 and 255, (priority reversed, 0 is highest)'
+    )
+    max_run_cnt = models.IntegerField("Maximum execution times", default=0, blank=True)
+    deadline_run_time = models.DateTimeField('Deadline run datetime', blank=True, null=True, default=None)
     queue_name = models.CharField("Queue Name", max_length=200, default='')
     exchange_name = models.CharField("Exchange Name", max_length=200, default='')
     routing_key = models.CharField("Route Key", max_length=200, default='')
@@ -133,7 +141,7 @@ class PeriodicJobModel(BaseAbstractModel):
 
     @classmethod
     def get_enabled_tasks(cls):
-        return cls.objects.filter(enabled=True).all()
+        return cls.objects.filter(is_enabled=True).all()
 
     def compile_task_func(self):
         if not self.task_source_code:
