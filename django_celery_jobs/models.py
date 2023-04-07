@@ -123,15 +123,15 @@ class PeriodicJobModel(BaseAbstractModel):
     )
     max_run_cnt = models.IntegerField("Maximum execution times", default=0, blank=True)
     deadline_run_time = models.DateTimeField('Deadline run datetime', blank=True, null=True, default=None)
-    queue_name = models.CharField("Queue Name", max_length=200, default='')
-    exchange_name = models.CharField("Exchange Name", max_length=200, default='')
-    routing_key = models.CharField("Route Key", max_length=200, default='')
-    func_name = models.CharField("Func Name", max_length=100, default='')
-    task_source_code = models.CharField("Task Source Code", max_length=5000, default='')
+    queue_name = models.CharField("Queue Name", max_length=200, default='', blank=True)
+    exchange_name = models.CharField("Exchange Name", max_length=200, default='', blank=True)
+    routing_key = models.CharField("Route Key", max_length=200, default='', blank=True)
+    func_name = models.CharField("Func Name", max_length=100, default='', blank=True)
+    task_source_code = models.TextField("Task Source Code", default='', blank=True)
 
     # SSH 执行脚本(本地或远程, 一种定时任务的实现) paramiko
-    # directory = models.CharField("Directory where the command is executed", max_length=1000, default='')
-    # command = models.CharField("Script execution command", max_length=1000, default='')
+    # directory = models.CharField("Execution directory", max_length=1000, default='', blank=True)
+    # command = models.TextField("Script Execution command", default='', blank=True)
 
     remark = models.CharField("remark", max_length=1000, default='')
 
@@ -147,18 +147,13 @@ class PeriodicJobModel(BaseAbstractModel):
         if not self.task_source_code:
             return
 
-        func_obj = None
         namespace = {'__builtins__': {}}
         func_source_code = self.task_source_code.strip()
         exec(func_source_code, namespace)
+        func = namespace.get(self.func_name)
 
-        for name, obj in namespace.items():
-            if callable(obj) and getattr(obj, "__name__", None) == name:
-                func_obj = obj
-                break
-
-        assert func_obj, "PeriodicJobModel<id:%s> hasn't source code" % self.id
-        return func_obj
+        assert func, "PeriodicJobModel<id:%s> hasn't source code" % self.id
+        return func
 
 
 class CeleryPeriodicJobModel(PeriodicTask):
