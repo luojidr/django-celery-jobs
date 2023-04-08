@@ -106,7 +106,7 @@ class JobConfigModel(BaseAbstractModel):
         return as_uri.format(**uri_kwargs)
 
 
-class PeriodicJobModel(BaseAbstractModel):
+class JobPeriodicModel(BaseAbstractModel):
     title = models.CharField("Task Title", unique=True, max_length=500, default='')
     config = models.ForeignKey(to=JobConfigModel, related_name="config",
                                default=None, null=True, on_delete=models.SET_NULL)
@@ -115,17 +115,8 @@ class PeriodicJobModel(BaseAbstractModel):
     crontab = models.ForeignKey(to=CrontabSchedule, related_name="crontab",
                                 default=None, null=True, on_delete=models.SET_NULL)
     is_enabled = models.BooleanField("Start or not", default=False, blank=True)
-    args = models.JSONField('Positional Arguments', blank=True, default=list)
-    kwargs = models.JSONField('Keyword Arguments', blank=True, default=dict)
-    priority = models.PositiveIntegerField(
-        'Priority', validators=[MaxValueValidator(255)], default=None, blank=True,
-        null=True, help_text='Priority Number between 0 and 255, (priority reversed, 0 is highest)'
-    )
     max_run_cnt = models.IntegerField("Maximum execution times", default=0, blank=True)
     deadline_run_time = models.DateTimeField('Deadline run datetime', blank=True, null=True, default=None)
-    queue_name = models.CharField("Queue Name", max_length=200, default='', blank=True)
-    exchange_name = models.CharField("Exchange Name", max_length=200, default='', blank=True)
-    routing_key = models.CharField("Route Key", max_length=200, default='', blank=True)
     func_name = models.CharField("Func Name", max_length=100, default='', blank=True)
     task_source_code = models.TextField("Task Source Code", default='', blank=True)
 
@@ -138,10 +129,6 @@ class PeriodicJobModel(BaseAbstractModel):
     class Meta:
         db_table = 'django_celery_jobs_periodic_task'
         ordering = ["-id"]
-
-    @classmethod
-    def get_enabled_tasks(cls):
-        return cls.objects.filter(is_enabled=True).all()
 
     def compile_task_func(self):
         if not self.task_source_code:
@@ -156,7 +143,7 @@ class PeriodicJobModel(BaseAbstractModel):
         return func
 
 
-class CeleryPeriodicJobModel(PeriodicTask):
+class BeatPeriodicTaskModel(PeriodicTask):
     """ django_celery_beat.models:PeriodicTask """
     class Meta:
         proxy = True
@@ -212,7 +199,7 @@ class JobRunnerResultModel(BaseAbstractModel):
         ordering = ["-id"]
 
 
-class CeleryJobRunnerResultModel(TaskResult):
+class CeleryTaskRunnerResultModel(TaskResult):
     """ django_celery_results.models:TaskResult """
     class Meta:
         proxy = True

@@ -35,7 +35,6 @@ class ModelDict(dict):
 class SyncScheduledJob:
     on_finalized = False
     Models = ModelDict()
-    SYNC_PERIODIC_JOB_CACHE = {}
 
     def __init__(self, scheduler):
         self.scheduler = scheduler
@@ -63,53 +62,79 @@ class SyncScheduledJob:
         return object.__new__(cls)
 
     def get_periodic_jobs(self):
-        job_ids = [item['id'] for item in self.SYNC_PERIODIC_JOB_CACHE.values()]
-        queryset = self.Models.PeriodicJob.get_enabled_tasks().exclude(id__in=job_ids).all()
+        """ When the number of scheduled jobs is large, the time required must be optimized """
+        fields = ('periodic_task', 'crontab')
+        queryset = self.Models.JobPeriodic.objects.select_related(*fields).all()
+
+        for job in queryset:
+            deadline_run_time = job.deadline_run_time
+
+            if deadline_run_time and timezone.datetime.now() > deadline_run_time:
+                job.is_enabled = False
+                job.save()
 
         return queryset
 
     def sync_all_schedules(self, **kwargs):
-        job_ids = [item['id'] for item in self.SYNC_PERIODIC_JOB_CACHE.values()]
-        queryset = self.Models.PeriodicJob.get_enabled_tasks()
+        queryset = self.get_periodic_jobs()
+        enable_queryset = queryset.filter(**kwargs).all()
 
-        try:
-            enable_queryset = queryset.filter(**kwargs).exclude(id__in=job_ids).all()
+        for job_obj in enable_queryset:
+            is_enabled = job_obj.is_enabled
 
-            for job_obj in enable_queryset:
-                self._sync_one_schedule(periodic_job=job_obj)
-        except Exception as e:
-            logger.error("[%s] >>> SyncJobToSchedule.sync_all_schedules err: %s", __name__, e)
-            logger.error(traceback.format_exc())
+            try:
+                if is_enabled:
+                    self._sync_schedule(job=job_obj)
+                else:
+                    self._stop_schedule(job=job_obj)
+            except Exception as e:
+                logger.error("[%s] >>> SyncJobToSchedule.sync_all_schedules err: %s", __name__, e)
+                logger.error(traceback.format_exc())
 
-    def _sync_one_schedule(self, periodic_job):
-        job_pk = periodic_job.id
+    def _sync_schedule(self, job):
 
-        if job_pk not in self.SYNC_PERIODIC_JOB_CACHE:
-            func = periodic_job.compile_task_func()
+        beat_periodic_task_id = job.periodic_task.id if job.periodic_task else None
+
+        if not beat_periodic_task_id:
+            func = job.compile_task_func()
             if not func: return
 
-            task = self.scheduler.app.task(func, name=func.__name__)
+            task_name = func.__name__
+            task = self.scheduler.app.task(func, name=task_name)
             self.scheduler.app.tasks.register(task)  # Register task to celery_app.apps.tasks
 
-            task_name = task.name.rsplit('.', 1)[-1]
             # entry: celery_app.conf.beat_schedule
             entry_fields = dict(
                 task=task_name, args=(), kwargs={},
-                schedule=periodic_job.crontab.schedule,
+                schedule=job.crontab.schedule,
                 options={'expire_seconds': None},
             )
 
             update_attrs = dict()
-            entry = self.scheduler.Entry.from_entry(task_name, app=self.scheduler.app, **entry_fields)
+            entry = self.scheduler.Entry.from_entry(
+                name=task_name,
+                app=self.scheduler.app,
+                **entry_fields
+            )
 
-            if not periodic_job.func_name.strip():
+            if not job.func_name.strip():
                 update_attrs['func_name'] = func.__name__
 
-            if not periodic_job.periodic_task:
+            if not job.periodic_task:
                 update_attrs['periodic_task'] = entry.model
-            periodic_job.save_attrs(**update_attrs)
+            job.save_attrs(**update_attrs)
 
-            self.SYNC_PERIODIC_JOB_CACHE[job_pk] = dict(id=job_pk, title=periodic_job.title)
+    def _stop_schedule(self, job):
+        func = job.compile_task_func()
+        beat_periodic_task_id = job.periodic_task.id if job.periodic_task else None
+
+        if not func or beat_periodic_task_id:
+            return
+
+        task_name = func.__name__
+        self.scheduler.app.tasks.unregister(task_name)
+        job.periodic_task.enabled = False
+        job.periodic_task.save()
 
 
 class BeatScheduler(DatabaseScheduler):
@@ -191,9 +216,8 @@ class BeatScheduler(DatabaseScheduler):
             SyncScheduledJob.Models.JobScheduledResult.add_result(**scheduled_kw)
 
     def schedule_changed(self):
-        is_changed = super().schedule_changed()
         SyncScheduledJob(self).sync_all_schedules()
 
-        return is_changed
+        return super().schedule_changed()
 
 
