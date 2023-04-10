@@ -1,97 +1,112 @@
-import six
 import json
 
+from django.utils import timezone
 
-class Job(object):
-    __slots__ = (
-        '_scheduler', 'title', 'config_id', 'periodic_task_id', 'crontab_id',
-        'is_enabled', 'args', 'kwargs', 'priority',  'max_run_cnt', 'deadline_run_time',
-        'queue_name', 'exchange_name', 'routing_key',  'func_name', 'task_source_code',
-    )
+from ..models import JobPeriodicModel
+from .trigger.base import BaseTrigger
 
-    def __init__(self, scheduler, name=None, **kwargs):
-        super(Job, self).__init__()
-        self._scheduler = scheduler
-        self._modify(name=name, **kwargs)
 
-    def modify(self, **job_kwargs):
-        self._scheduler.modify_job(self.title, **job_kwargs)
-        return self
+class Job:
+    _task_slots = ('name', 'task', 'args', 'kwargs', 'queue', 'exchange', 'routing_key',
+                   'expires', 'enabled', 'last_run_at', 'total_run_count', 'date_changed',
+                   'description', 'crontab_id', 'interval_id', 'clocked_id', 'solar_id',
+                   'priority', 'one_off', 'start_time', 'headers', 'expire_seconds')
 
-    def stop(self):
-        self._scheduler.stop_job(self.title)
-        return self
+    _job_slots = ('title', 'is_enabled', 'max_run_cnt', 'config_id', 'func_name',
+                  'periodic_task_id', 'deadline_run_time', 'task_source_code', 'remark')
 
-    def start(self):
-        self._scheduler.resume_job(self.title)
-        return self
+    def __init__(self, **options):
+        self.job = self._get_cleaned_job(**options)
+        self.beat_task = self._get_cleaned_task(**options)
+        self.trigger = options.pop('trigger', None)
 
-    def remove(self):
-        self._scheduler.remove_job(self.title)
+        if isinstance(self.trigger, BaseTrigger):
+            raise ValueError('trigger must be instance of BaseTrigger')
 
-    def get_next_run_time(self):
-        pass
-
-    def _modify(self, **job_kwargs):
+    def _get_cleaned_job(self, **options):
         approved = {
-            'title': job_kwargs.pop('title'),
-            'config_id': job_kwargs.pop('config_id'),
-            'periodic_task_id': job_kwargs.pop('periodic_task_id', None),
-            'args': json.loads(job_kwargs.pop('args', None) or ()),
-            'kwargs': json.loads(job_kwargs.pop('kwargs', None) or {}),
-            'exchange_name': job_kwargs.pop('exchange_name', None),
-            'routing_key': job_kwargs.pop('routing_key', None),
-            'is_enabled': False,
+            'is_enabled': False, 'periodic_task_id': None,
+            'func_name': options.pop('func_name') or '',
+            'deadline_run_time': None,
+            'remark': options.pop('remark', ''),
+
         }
 
-        # crontab
-        pass
+        title = options.pop("title", None)
+        if not title:
+            raise ValueError("Job title can not be empty and unique.")
+        approved['title'] = title
 
-        priority = job_kwargs.pop('priority', None)
-        if priority is not None and priority > 255:
-            raise ValueError('priority maximum is 255.')
+        config_id = options.pop('config_id', None)
+        if not config_id:
+            raise ValueError('Job conf can not be empty')
+        approved['config_id'] = config_id
 
-        queue_name = job_kwargs.pop('queue_name', None)
-        if not queue_name:
-            raise ValueError('Queue name is not allowed empty.')
+        max_run_cnt = int(options.pop('max_run_cnt', 0))
+        approved['max_run_cnt'] = max_run_cnt
+        if max_run_cnt:
+            deadline_run_time = self.trigger.get_last_run_time(max_run_cnt)
+            approved.update(deadline_run_time=deadline_run_time.strftime("%Y-%m-%d %H:%M:%S"))
 
         namespace = {'__builtins__': {}}
-        func_name = job_kwargs.pop('func_name', '')
-        task_source_code = job_kwargs.pop('task_source_code', '')
+        func_name = options.pop('func_name', '')
+        task_source_code = options.pop('task_source_code', '')
+        approved['task_source_code'] = task_source_code
 
         if task_source_code:
             exec(task_source_code, namespace)
-            np_keys = [k for k in namespace.keys() if not k.startswith('_')]
-
-            if func_name and func_name != np_keys[0]:
-                raise ValueError("Function name do not match.")
-            else:
-                func_name = np_keys[0]
-
-        approved.update(
-            priority=priority, queue_name=queue_name,
-            func_name=func_name, task_source_code=task_source_code,
-        )
-
-        for attr in job_kwargs:
-            if attr not in self.__slots__:
-                raise AttributeError('Job not include `%s` field: %s' % attr)
-
-            approved[attr] = job_kwargs.pop(attr, '')
-
-        for key, value in six.iteritems(approved):
-            setattr(self, key, value)
-
-    def __repr__(self):
-        return 'Job<name:%s>' % self.title
-
-    def __str__(self):
-        datetime_repr = (lambda v: v.strftime('%Y-%m-%d %H:%M:%S') if v else 'None')
-
-        if hasattr(self, 'next_run_time'):
-            status = 'next run at: %s' % datetime_repr(self.next_run_time) if self.next_run_time else 'paused'
+            ns_keys = [k for k in namespace.keys() if not k.startswith('_')]
+            approved['func_name'] = ns_keys[0]
         else:
-            status = 'pending'
+            approved['func_name'] = func_name
 
-        return 'Job<name:%s, trigger:%s, %s>' % (self.title, self.crontab_id, status)
+        return approved
 
+    def _get_cleaned_task(self, **options):
+        approved = {
+            'enabled': 0, 'last_run_at': None,
+            'total_run_count': 0, 'date_changed': timezone.datetime.now(),
+            'args': options.pop('args', None),
+            'exchange': options.pop('exchange', None),
+            'routing_key': options.pop('routing_key', None),
+            'expires': options.pop('expires', None),
+            'description': '', 'interval_id': None, 'clocked_id': None,
+            'solar_id': None, 'priority': options.pop('priority', None),
+            'one_off': 0, 'start_time': None, 'headers': '{}',
+            'expire_seconds': None,
+        }
+
+        name = options.pop("name", None)
+        if not name:
+            raise ValueError("Job name can not be empty and unique.")
+        approved['name'] = name
+
+        try:
+            args = json.dumps(json.loads(options.pop('args', '[]')))
+            kwargs = json.dumps(json.loads(options.pop('kwargs', '{}')))
+        except (json.JSONDecodeError, json.JSONEncoder):
+            raise
+        approved.update(args=args, kwargs=kwargs)
+
+        trigger_schedule = self.trigger.get_trigger_schedule()
+        approved.update(**trigger_schedule)
+
+        return approved
+
+    def get_next_run_time(self):
+        return self.trigger.get_next_run_time()
+
+    def get_all_jobs(self):
+        pass
+
+    def add_job(self, job):
+        pass
+
+    def update_job(self, job):
+        pass
+
+    def remove_job(self, name):
+        pass
+
+    def _lookup_job(self, name):
+        pass

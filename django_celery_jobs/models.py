@@ -107,13 +107,11 @@ class JobConfigModel(BaseAbstractModel):
 
 
 class JobPeriodicModel(BaseAbstractModel):
-    title = models.CharField("Task Title", unique=True, max_length=500, default='')
+    title = models.CharField("Task Title", unique=True, max_length=255, default='')
     config = models.ForeignKey(to=JobConfigModel, related_name="config",
                                default=None, null=True, on_delete=models.SET_NULL)
     periodic_task = models.ForeignKey(to=PeriodicTask, related_name="periodic_task",
                                       default=None, null=True, on_delete=models.SET_NULL)
-    crontab = models.ForeignKey(to=CrontabSchedule, related_name="crontab",
-                                default=None, null=True, on_delete=models.SET_NULL)
     is_enabled = models.BooleanField("Start or not", default=False, blank=True)
     max_run_cnt = models.IntegerField("Maximum execution times", default=0, blank=True)
     deadline_run_time = models.DateTimeField('Deadline run datetime', blank=True, null=True, default=None)

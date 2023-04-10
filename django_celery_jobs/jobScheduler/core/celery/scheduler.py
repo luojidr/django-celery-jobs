@@ -1,4 +1,3 @@
-import sys
 import uuid
 import string
 import random
@@ -12,6 +11,7 @@ from celery.utils import cached_property
 from celery.schedules import schedstate
 
 from django.utils import timezone
+from django.db import transaction
 from django.db.models.base import ModelBase
 from django.core.cache import caches
 from django.core.cache.backends.redis import RedisCache
@@ -19,6 +19,7 @@ from django.core.cache.backends.redis import RedisCache
 from django_celery_beat.schedulers import DatabaseScheduler
 
 from .app import CeleryAppDispatcher
+from django_celery_jobs.jobScheduler.core.functools import deprecated
 from django_celery_jobs import models
 
 logger = logging.getLogger("celery.worker")
@@ -61,38 +62,27 @@ class SyncScheduledJob:
 
         return object.__new__(cls)
 
-    def get_periodic_jobs(self):
+    def get_disabled_jobs(self):
         """ When the number of scheduled jobs is large, the time required must be optimized """
-        fields = ('periodic_task', 'crontab')
-        queryset = self.Models.JobPeriodic.objects.select_related(*fields).all()
-
-        for job in queryset:
-            deadline_run_time = job.deadline_run_time
-
-            if deadline_run_time and timezone.datetime.now() > deadline_run_time:
-                job.is_enabled = False
-                job.save()
+        now = timezone.datetime.now()
+        queryset = self.Models.JobPeriodic.objects.filter(is_enabled=False)
+        queryset = queryset.filter(deadline_run_time__lt=now).select_related('periodic_task').all()
 
         return queryset
 
     def sync_all_schedules(self, **kwargs):
-        queryset = self.get_periodic_jobs()
+        queryset = self.get_disabled_jobs()
         enable_queryset = queryset.filter(**kwargs).all()
 
         for job_obj in enable_queryset:
-            is_enabled = job_obj.is_enabled
-
             try:
-                if is_enabled:
-                    self._sync_schedule(job=job_obj)
-                else:
-                    self._stop_schedule(job=job_obj)
+                self._stop_schedule(job=job_obj)
             except Exception as e:
                 logger.error("[%s] >>> SyncJobToSchedule.sync_all_schedules err: %s", __name__, e)
                 logger.error(traceback.format_exc())
 
+    @deprecated(reason='Use web GUI to control periodic jobs')
     def _sync_schedule(self, job):
-
         beat_periodic_task_id = job.periodic_task.id if job.periodic_task else None
 
         if not beat_periodic_task_id:
@@ -126,6 +116,7 @@ class SyncScheduledJob:
 
     def _stop_schedule(self, job):
         func = job.compile_task_func()
+        deadline_run_time = job.deadline_run_time
         beat_periodic_task_id = job.periodic_task.id if job.periodic_task else None
 
         if not func or beat_periodic_task_id:
@@ -133,8 +124,17 @@ class SyncScheduledJob:
 
         task_name = func.__name__
         self.scheduler.app.tasks.unregister(task_name)
-        job.periodic_task.enabled = False
-        job.periodic_task.save()
+
+        with transaction.atomic():
+            if deadline_run_time and timezone.datetime.now() > deadline_run_time:
+                job.is_enabled = False
+                job.remark = '%s（自动监控->停止）' % job.remark
+                job.periodic_task.enabled = False
+
+                job.save()
+                job.periodic_task.save()
+
+                logger.warning("Job<%s> is stop, now: %s", job.title, timezone.datetime.now())
 
 
 class BeatScheduler(DatabaseScheduler):
@@ -216,7 +216,7 @@ class BeatScheduler(DatabaseScheduler):
             SyncScheduledJob.Models.JobScheduledResult.add_result(**scheduled_kw)
 
     def schedule_changed(self):
-        SyncScheduledJob(self).sync_all_schedules()
+        # SyncScheduledJob(self).sync_all_schedules()
 
         return super().schedule_changed()
 
