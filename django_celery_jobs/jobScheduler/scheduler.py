@@ -4,13 +4,14 @@ from datetime import tzinfo
 from pytz import timezone
 from tzlocal import get_localzone
 
-from django.conf import settings
+from ..jobScheduler.core.celery.util import get_celery_app
 
+from .job import JobStore
 from .trigger.cron import CronTrigger
-from .core.exceptions import AlreadyRunningError
 
 
 class JobScheduler:
+    JOBSTORE_CLASS = JobStore
     TRIGGER_CLASSES = {
         'cron': CronTrigger
     }
@@ -23,7 +24,11 @@ class JobScheduler:
         self.configure(**options)
 
     def configure(self, **options):
-        tz = options.pop('timezone', None) or settings.TIME_ZONE or get_localzone()
+        celery_app = get_celery_app()
+        tz = celery_app.conf.timezone
+
+        if not tz:
+            tz = get_localzone()
 
         if isinstance(tz, six.string_types):
             tz = timezone(tz)
@@ -41,7 +46,7 @@ class JobScheduler:
         pass
 
     def add_job(self, **options):
-        pass
+        return self.JOBSTORE_CLASS(**options).add_job()
 
     def modify_job(self, job_name):
         pass
@@ -59,6 +64,7 @@ class JobScheduler:
         pass
 
     def _create_trigger(self, trigger, **options):
+        options['timezone'] = self.timezone
         return self.TRIGGER_CLASSES[trigger](**options)
 
 

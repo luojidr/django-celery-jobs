@@ -1,12 +1,16 @@
 import json
 
 from django.utils import timezone
+from django.db import transaction, DatabaseError
+from django_celery_beat.models import PeriodicTask
 
-from ..models import JobPeriodicModel
 from .trigger.base import BaseTrigger
+from ..models import JobPeriodicModel
+
+__all__ = ('JobStore', )
 
 
-class Job:
+class JobStore:
     _task_slots = ('name', 'task', 'args', 'kwargs', 'queue', 'exchange', 'routing_key',
                    'expires', 'enabled', 'last_run_at', 'total_run_count', 'date_changed',
                    'description', 'crontab_id', 'interval_id', 'clocked_id', 'solar_id',
@@ -21,7 +25,10 @@ class Job:
         self.trigger = options.pop('trigger', None)
 
         if isinstance(self.trigger, BaseTrigger):
-            raise ValueError('trigger must be instance of BaseTrigger')
+            raise ValueError("trigger must be instance of BaseTrigger's subclass")
+
+        self._clean_job = self._get_cleaned_job(**options)
+        self._clean_task = self._get_cleaned_task(**options)
 
     def _get_cleaned_job(self, **options):
         approved = {
@@ -60,6 +67,10 @@ class Job:
         else:
             approved['func_name'] = func_name
 
+        attrs = list(set(approved.keys()) - set(self._job_slots))
+        if attrs:
+            raise AttributeError("Job's attribute is redundant, attrs: %s", ', '.join(attrs))
+
         return approved
 
     def _get_cleaned_task(self, **options):
@@ -91,6 +102,10 @@ class Job:
         trigger_schedule = self.trigger.get_trigger_schedule()
         approved.update(**trigger_schedule)
 
+        attrs = list(set(approved.keys()) - set(self._job_slots))
+        if attrs:
+            raise AttributeError("Beat task's attribute is redundant, attrs: %s", ', '.join(attrs))
+
         return approved
 
     def get_next_run_time(self):
@@ -99,10 +114,22 @@ class Job:
     def get_all_jobs(self):
         pass
 
-    def add_job(self, job):
-        pass
+    def add_job(self):
+        with transaction.atomic():
+            sid = transaction.savepoint()  # 开启事务设置事务保存点
 
-    def update_job(self, job):
+            try:
+                periodic_task = PeriodicTask.objects.create(**self._clean_task)
+
+                self._clean_job['periodic_task_id'] = periodic_task.id
+                return JobPeriodicModel.objects.create(**self._clean_job)
+            except:
+                transaction.savepoint_rollback(sid)
+                raise DatabaseError('Jobstore to save job failed.')
+            finally:
+                transaction.savepoint_commit(sid)
+
+    def update_job(self, job_id):
         pass
 
     def remove_job(self, name):
