@@ -6,7 +6,7 @@ from tzlocal import get_localzone
 
 from ..jobScheduler.core.celery.util import get_celery_app
 
-from .job import JobStore
+from .jobstore import JobStore
 from .trigger.cron import CronTrigger
 
 
@@ -39,29 +39,23 @@ class JobScheduler:
 
         self.timezone = tz
 
-    def get_jobs(self):
-        pass
+    def get_jobs(self, job_ids=None):
+        return self._lookup_jobstore().get_all_jobs(job_ids)
 
-    def get_job(self):
-        pass
+    def get_job(self, job_id):
+        return self._lookup_jobstore(job_id=job_id).get_job()
 
     def add_job(self, **options):
-        return self.JOBSTORE_CLASS(**options).add_job()
+        return self._lookup_jobstore(**options).add_job()
 
-    def modify_job(self, job_name):
-        pass
+    def modify_job(self, job_id, **kwargs):
+        return self._lookup_jobstore(job_id=job_id, **kwargs).update_job()
 
-    def remove_job(self):
-        pass
+    def remove_job(self, job_id):
+        return self._lookup_jobstore(job_id=job_id).remove_job()
 
-    def start_job(self, job_name):
-        pass
-
-    def stop_job(self, job_name):
-        pass
-
-    def _lookup_job(self, job_id):
-        pass
+    def _lookup_jobstore(self, **opts):
+        return self.JOBSTORE_CLASS(**opts)
 
     def _create_trigger(self, trigger, **options):
         options['timezone'] = self.timezone

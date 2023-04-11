@@ -1,4 +1,5 @@
 import six
+from collections import OrderedDict
 from croniter import croniter
 
 from django.conf import settings
@@ -6,6 +7,8 @@ from django.utils import timezone as tzinfo
 from django_celery_beat.models import CrontabSchedule
 
 from .base import BaseTrigger
+
+__all__ = ['CronTrigger']
 
 
 class CronTrigger(BaseTrigger):
@@ -19,25 +22,21 @@ class CronTrigger(BaseTrigger):
     :param datetime.tzinfo|str timezone: time zone to use for the date/time calculations (defaults
         to scheduler timezone)
     """
-    FIELDS = ('minute', 'hour', 'day_of_month', 'month_of_year', 'day_of_week')
-    __slots__ = FIELDS + ('expression', 'timezone')
+    ORDERED_FIELDS = ('minute', 'hour', 'day_of_month', 'month_of_year', 'day_of_week')
+    __slots__ = ORDERED_FIELDS + ('expression', 'timezone')
 
     def __init__(self, minute=None, hour=None, day_of_month=None, month_of_year=None,
                  day_of_week=None, timezone=None, **kwargs):
-        self.values = [''] * len(self.FIELDS)
         self.timezone = timezone or settings.TIME_ZONE
+        self._crons = OrderedDict.fromkeys(self.ORDERED_FIELDS)
 
         for (key, value) in six.iteritems(locals()):
-            if key in self.FIELDS:
-                index = self.FIELDS[key]
-                value = str(value) if value is None else '*'
-
-                self.values[index] = value
+            if key in self.ORDERED_FIELDS:
+                value = str(value) if value is not None else '*'
+                self._crons[key] = value
                 setattr(self, key, value)
 
-    @property
-    def expression(self):
-        return " ".join(self.values)
+        self.expression = " ".join([self._crons[k] for k in self._crons])
 
     @classmethod
     def from_crontab(cls, expr, timezone=None):
@@ -62,14 +61,14 @@ class CronTrigger(BaseTrigger):
 
         return last_run_time
 
-    def get_next_time_range(self, max_times=None, now=None, is_fmt=False):
+    def get_next_time_range(self, max_times=None, now=None, fmt=False):
         next_time_list = []
         cron = croniter(self.expression, now or tzinfo.datetime.now())
 
-        for i in range(max_times or 10):
+        for i in range(max_times or self.max_times):
             next_run_time = cron.get_next(tzinfo.datetime)
 
-            if is_fmt:
+            if fmt:
                 next_time_list.append(next_run_time.strftime("%Y-%m-%d %H:%M:%S"))
             else:
                 next_time_list.append(next_run_time)
@@ -77,10 +76,9 @@ class CronTrigger(BaseTrigger):
         return next_time_list
 
     def get_trigger_schedule(self):
-        option = dict(zip(self.FIELDS, self.values))
-        obj, created = CrontabSchedule.objects.get_or_create(**option)
+        obj, created = CrontabSchedule.objects.get_or_create(**self._crons)
         return dict(crontab_id=obj.id)
 
     def __str__(self):
-        return '%s<%s>' % (self.expression, self.timezone)
+        return '<%s>: %s' % (self.timezone, self.expression)
 
