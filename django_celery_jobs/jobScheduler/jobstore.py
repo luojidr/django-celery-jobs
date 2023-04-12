@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from collections import OrderedDict
 
 from django.utils import timezone
@@ -20,8 +21,7 @@ class JobStore:
         if isinstance(self.trigger, BaseTrigger):
             raise ValueError("trigger must be instance of BaseTrigger's subclass")
 
-        self._job_opts = self._get_job_opts(**options)
-        self._beat_task_opts = self._get_task_opts(**options)
+        self._options = deepcopy(options)
 
     @property
     def job(self):
@@ -33,7 +33,7 @@ class JobStore:
 
         return instance
 
-    def _init_model_opts(self, model_or_object):
+    def _init_model_default(self, model_or_object):
         opts = {}
 
         for field in model_or_object._meta.fields:
@@ -41,9 +41,9 @@ class JobStore:
 
             if not field.primary_key:
                 # many_to_many: ManyToManyField
-                # many_to_one:  ForeignKey
-                # one_to_many:  GenericRelation, the reverse of a ForeignKey
-                # one_to_one:   OneToOneField
+                #  many_to_one: ForeignKey
+                #  one_to_many: GenericRelation, the reverse of a ForeignKey
+                #   one_to_one: OneToOneField
                 if any([field.many_to_many, field.many_to_one, field.one_to_many, field.one_to_one]):
                     field_name = field.name + '_id'
 
@@ -52,7 +52,7 @@ class JobStore:
         return opts
 
     def _get_job_opts(self, **options):
-        approved = self._init_model_opts(model=JobPeriodicModel)
+        approved = self._init_model_default(model_or_object=JobPeriodicModel)
         approved.update(
             remark=options.pop('remark', approved['remark']),
             func_name=options.pop('func_name', approved['func_name']),
@@ -88,8 +88,8 @@ class JobStore:
 
         return approved
 
-    def _get_task_opts(self, **options):
-        approved = self._init_model_opts(model=PeriodicTask)
+    def _get_beat_task_opts(self, **options):
+        approved = self._init_model_default(model_or_object=PeriodicTask)
         approved.update(
             priority=options.pop('priority', approved['priority']),
             exchange=options.pop('exchange', approved['exchange']),
@@ -128,10 +128,12 @@ class JobStore:
             sid = transaction.savepoint()  # 开启事务设置事务保存点
 
             try:
-                periodic_task = PeriodicTask.objects.create(**self._beat_task_opts)
+                beat_task_opts = self._get_beat_task_opts(**self._options)
+                periodic_task = PeriodicTask.objects.create(**beat_task_opts)
 
-                self._job_opts['periodic_task_id'] = periodic_task.id
-                instance = JobPeriodicModel.objects.create(**self._job_opts)
+                job_opts = self._get_job_opts(**self._options)
+                job_opts['periodic_task_id'] = periodic_task.id
+                instance = JobPeriodicModel.objects.create(**job_opts)
                 self.job_id = instance.id
 
                 return self.job
@@ -147,10 +149,10 @@ class JobStore:
 
         with transaction.atomic():
             if beat_task:
-                model_opts[beat_task] = self._beat_task_opts
+                model_opts[beat_task] = self._get_beat_task_opts(**self._options)
 
             if self.job:
-                model_opts[self.job] = self._job_opts
+                model_opts[self.job] = self._get_job_opts(**self._options)
 
             for orm_object, approved_opts in model_opts.items():
                 for name, new_value in approved_opts.items():
@@ -176,7 +178,11 @@ class JobStore:
             self.job.save()
 
     def _lookup_job(self, job_ids=None):
-        queryset = JobPeriodicModel.objects.filter(is_enabled=True, is_del=False).all()
+        q = dict(
+            periodic_task_id__gt=0,
+            is_enabled=True, is_del=False
+        )
+        queryset = JobPeriodicModel.objects.filter(**q).all()
 
         if job_ids is None:  # All jobs
             return queryset

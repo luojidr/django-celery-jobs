@@ -7,10 +7,11 @@ from tzlocal import get_localzone
 from ..jobScheduler.core.celery.util import get_celery_app
 
 from .jobstore import JobStore
+from .trigger.base import BaseTrigger
 from .trigger.cron import CronTrigger
 
 
-class JobScheduler:
+class JobSchedulerHandler:
     JOBSTORE_CLASS = JobStore
     TRIGGER_CLASSES = {
         'cron': CronTrigger
@@ -39,6 +40,9 @@ class JobScheduler:
 
         self.timezone = tz
 
+    def __getattr__(self, name):
+        raise AttributeError
+
     def get_jobs(self, job_ids=None):
         return self._lookup_jobstore().get_all_jobs(job_ids)
 
@@ -55,10 +59,23 @@ class JobScheduler:
         return self._lookup_jobstore(job_id=job_id).remove_job()
 
     def _lookup_jobstore(self, **opts):
-        return self.JOBSTORE_CLASS(**opts)
+        trigger = opts.pop('trigger', 'cron')
+        trigger = self._create_trigger(trigger, **opts)
 
-    def _create_trigger(self, trigger, **options):
+        return self.JOBSTORE_CLASS(trigger=trigger, **opts)
+
+    def _create_trigger(self, trigger=None, **options):
+        if isinstance(trigger, BaseTrigger):
+            return trigger
+        elif trigger is None:
+            trigger = 'cron'
+        elif not isinstance(trigger, six.string_types):
+            raise TypeError('Expected a trigger instance or string, got %s instead' % trigger.__class__.__name__)
+        elif trigger not in self.TRIGGER_CLASSES:
+            raise ValueError('Expected trigger: %s' % ', '.join(self.TRIGGER_CLASSES.keys()))
+
         options['timezone'] = self.timezone
         return self.TRIGGER_CLASSES[trigger](**options)
 
 
+scheduler = JobSchedulerHandler()
