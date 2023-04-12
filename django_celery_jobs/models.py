@@ -13,7 +13,7 @@ from celery.utils.nodenames import default_nodename
 from django_celery_beat.models import PeriodicTask, CrontabSchedule, CrontabSchedule
 from django_celery_results.models import TaskResult, TASK_STATE_CHOICES
 
-from .jobScheduler.util import get_ip_addr
+from .jobScheduler.utils import get_ip_addr
 
 UserModel = get_user_model()
 DEFAULT_TIME = "1979-01-01 00:00:00"

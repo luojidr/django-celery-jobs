@@ -4,7 +4,7 @@ from datetime import tzinfo
 from pytz import timezone
 from tzlocal import get_localzone
 
-from ..jobScheduler.core.celery.util import get_celery_app
+from .core.celery.utils import get_celery_app
 
 from .jobstore import JobStore
 from .trigger.base import BaseTrigger

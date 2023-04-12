@@ -1,4 +1,4 @@
-from django_celery_jobs.jobScheduler.util import get_celery_app
+from ..jobScheduler.core.celery.utils import get_celery_app
 
 celery_app = get_celery_app()
 

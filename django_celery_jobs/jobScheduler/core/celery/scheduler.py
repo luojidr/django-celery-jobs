@@ -19,7 +19,7 @@ from django.core.cache.backends.redis import RedisCache
 from django_celery_beat.schedulers import DatabaseScheduler
 
 from .app import CeleryAppDispatcher
-from django_celery_jobs.jobScheduler.core.functools import deprecated
+from ..functools import deprecated
 from django_celery_jobs import models
 
 logger = logging.getLogger("celery.worker")
@@ -33,7 +33,7 @@ class ModelDict(dict):
         return self[name]
 
 
-class SyncScheduledJob:
+class SyncScheduledTask:
     on_finalized = False
     Models = ModelDict()
 
@@ -203,10 +203,10 @@ class BeatScheduler(DatabaseScheduler):
             exc_info = traceback.format_exc()
             scheduled_kw.update(is_success=False, traceback=exc_info[-2800:])
         finally:
-            SyncScheduledJob.Models.JobScheduledResult.add_result(**scheduled_kw)
+            SyncScheduledTask.Models.JobScheduledResult.add_result(**scheduled_kw)
 
     def schedule_changed(self):
-        SyncScheduledJob(scheduler=self).sync_all_schedules()
+        SyncScheduledTask(scheduler=self).sync_all_schedules()
 
         return super().schedule_changed()
 

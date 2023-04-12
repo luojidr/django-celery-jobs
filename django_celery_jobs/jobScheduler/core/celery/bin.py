@@ -9,7 +9,7 @@ from django.utils.functional import cached_property
 
 from celery.apps.beat import Beat
 
-from .util import get_celery_app
+from .utils import get_celery_app
 
 
 class BaseService:

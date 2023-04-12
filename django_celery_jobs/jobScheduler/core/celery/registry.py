@@ -3,7 +3,7 @@ from datetime import datetime
 
 from celery.signals import beat_init, celeryd_init, task_internal_error, import_modules
 
-from .util import autodiscover_tasks
+from .utils import autodiscover_tasks
 
 logger = logging.getLogger("celery.worker")
 

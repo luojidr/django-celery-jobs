@@ -6,7 +6,7 @@ import traceback
 from celery import Celery
 from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
 
-from .util import handle_task_router
+from .utils import handle_task_router
 
 logger = logging.getLogger("celery.worker")
 
