@@ -201,3 +201,46 @@ class CeleryTaskRunnerResultModel(TaskResult):
     """ django_celery_results.models:TaskResult """
     class Meta:
         proxy = True
+
+
+class CeleryDeployOptionModel(BaseAbstractModel):
+    DEPLOY_CHOICES = [
+        (1, 'block-instance'),  # Blocking start worker instance or the beat periodic task scheduler.
+
+        # https://docs.celeryq.dev/en/latest/reference/celery.bin.multi.html
+        (2, 'multi'),  # Start multiple worker instances for worker, only to worker
+
+        # https://docs.celeryq.dev/en/latest/userguide/daemonizing.html#generic-init-scripts
+        (3, 'init-script'),  # generic bash init-scripts for the celery worker or beat program
+
+        # https://docs.celeryq.dev/en/latest/userguide/daemonizing.html#usage-systemd
+        (4, 'systemd'),  # Use `systemctl` command to start worker or beat
+
+        # https://docs.celeryq.dev/en/latest/userguide/daemonizing.html#supervisor
+        (5, 'supervisor'),  # Use python third package to manage the celery worker or beat
+    ]
+
+    # 1,2,5 比较常见的部署方式, 3, 4细细研究
+    mode = models.SmallIntegerField("Deploy Mode", choices=DEPLOY_CHOICES, default=1, blank=True)
+    name = models.CharField("Name", max_length=30, default='', blank=True)
+    alias = models.CharField("Alias", max_length=100, default='', blank=True)
+    order = models.IntegerField("Option Order", default=1, blank=True)
+
+    class Meta:
+        abstract = True
+
+
+class DeployLogMode(BaseAbstractModel):
+    user_id = models.IntegerField("UserId", default=0, blank=True)
+    deploy_id = models.IntegerField("DeployId", default=0, blank=True)
+
+    class Meta:
+        db_table = 'django_celery_jobs_deploy_log'
+
+
+class AlarmTemplateModel(BaseAbstractModel):
+    """ Alarm template to notify """
+    name = models.CharField("Alarm Name", max_length=100, default='', blank=True)
+
+    class Meta:
+        abstract = True

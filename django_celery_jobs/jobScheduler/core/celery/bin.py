@@ -71,7 +71,7 @@ class BaseService:
         return self._app or get_celery_app()
 
 
-class WorkerService(BaseService):
+class LocalWorkerService(BaseService):
     _command = 'worker'
 
     def start(self):
@@ -98,14 +98,14 @@ class WorkerService(BaseService):
     def shutdown(self, wait=True):
         pass
 
-    def _start_worker(self):
+    def run_worker(self):
         """ celery.apps.worker:Worker """
         app = self.celery_app
         worker = app.Worker(concurrency=self.concurrency, loglevel=self.loglevel, pool=self.pool)
         worker.start()
 
 
-class BeatService(BaseService):
+class LocalBeatService(BaseService):
     _command = 'beat'
 
     def __init__(self, **kwargs):
@@ -140,8 +140,8 @@ class BeatService(BaseService):
     def shutdown(self, wait=True):
         pass
 
-    def _start_beat(self):
-        """  """
+    def run_beat(self):
+        """ celery.apps.beat:Beat """
         app = self.celery_app
         beat_options = dict(app=app, max_interval=self.max_interval or 5, loglevel=self.loglevel)
         self.beat_scheduler and beat_options.update(scheduler_cls=self.beat_scheduler)
