@@ -1,3 +1,8 @@
+CELERYD = [
+    ('celerypath', '', "Execute celery location"),
+    ('-A', '-app', "celery app module in Project"),
+]
+
 WORKER = [
         ('-n', '--hostname', "Set custom hostname (e.g., 'w1@%%h'). "
                              "Expands: %%h (hostname), %%n (name) and %%d,(domain)"),
@@ -32,6 +37,11 @@ BEAT = [
     ('-l', '--loglevel', "[DEBUG|INFO|WARNING|ERROR|CRITICAL|FATAL]"),
     ('-f', '--logfile', "TEXT"),
     ('--pidfile', '', 'TEXT'),
+]
+
+MULTI = [
+    ('--pidfile', '', "eg: /var/run/celery/%n.pid"),
+    ('--logfile', '', "eg: /var/log/celery/%n%I.log"),
 ]
 
 # https://github.com/Supervisor/supervisor/blob/main/supervisor/skel/sample.conf

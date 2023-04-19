@@ -3,6 +3,7 @@ import logging
 import platform
 import traceback
 from urllib.parse import quote_plus
+from itertools import chain
 
 from django.db import models
 from django.contrib.auth import get_user_model
@@ -14,6 +15,8 @@ from django_celery_beat.models import PeriodicTask, CrontabSchedule, CrontabSche
 from django_celery_results.models import TaskResult, TASK_STATE_CHOICES
 
 from .jobScheduler.utils import get_ip_addr
+from .jobScheduler.core.enums.deploy import DeployModeEnum
+from .jobScheduler.core.exceptions import DeployModeError
 
 UserModel = get_user_model()
 DEFAULT_TIME = "1979-01-01 00:00:00"
@@ -203,31 +206,35 @@ class CeleryTaskRunnerResultModel(TaskResult):
         proxy = True
 
 
-class CeleryDeployOptionModel(BaseAbstractModel):
-    DEPLOY_CHOICES = [
-        (1, 'block-instance'),  # Blocking start worker instance or the beat periodic task scheduler.
-
-        # https://docs.celeryq.dev/en/latest/reference/celery.bin.multi.html
-        (2, 'multi'),  # Start multiple worker instances for worker, only to worker
-
-        # https://docs.celeryq.dev/en/latest/userguide/daemonizing.html#generic-init-scripts
-        (3, 'init-script'),  # generic bash init-scripts for the celery worker or beat program
-
-        # https://docs.celeryq.dev/en/latest/userguide/daemonizing.html#usage-systemd
-        (4, 'systemd'),  # Use `systemctl` command to start worker or beat
-
-        # https://docs.celeryq.dev/en/latest/userguide/daemonizing.html#supervisor
-        (5, 'supervisor'),  # Use python third package to manage the celery worker or beat
-    ]
+class DeployOptionModel(BaseAbstractModel):
+    MODE_CHOICES = DeployModeEnum.members()
 
     # 1,2,5 比较常见的部署方式, 3, 4细细研究
-    mode = models.SmallIntegerField("Deploy Mode", choices=DEPLOY_CHOICES, default=1, blank=True)
+    mode = models.SmallIntegerField("Deploy Mode", choices=MODE_CHOICES, default=1, blank=True)
     name = models.CharField("Name", max_length=30, default='', blank=True)
     alias = models.CharField("Alias", max_length=100, default='', blank=True)
-    order = models.IntegerField("Option Order", default=1, blank=True)
+    value = models.CharField("Value", max_length=5000, default='', blank=True)
+    order = models.IntegerField("Order", default=1, blank=True)
+    description = models.CharField("Description", max_length=500, default='', blank=True)
 
     class Meta:
-        abstract = True
+        db_table = 'django_celery_jobs_deploy_options'
+        ordering = ['order']
+
+    @classmethod
+    def get_options_by_mode(cls, mode):
+        """
+        :param mode int|str, name or enum.name of DeployModeEnum
+        """
+        valid_modes = [(_enum.name.lower(), _enum.mode) for _enum in DeployModeEnum.iterator()]
+
+        if mode not in list(chain.from_iterable(valid_modes)):
+            raise DeployModeError("mode: %s is invalid." % mode)
+
+        mode_map = dict(valid_modes)
+        mode = mode_map.get(mode, mode)
+
+        return cls.objects.filter(mode=mode, is_del=False).all()
 
 
 class DeployLogMode(BaseAbstractModel):
@@ -236,6 +243,7 @@ class DeployLogMode(BaseAbstractModel):
 
     class Meta:
         db_table = 'django_celery_jobs_deploy_log'
+        abstract = True
 
 
 class AlarmTemplateModel(BaseAbstractModel):

@@ -1,15 +1,12 @@
-import os
 import logging
 import platform
 import traceback
 from itertools import chain
 
-from django.conf import settings
 from django.utils.functional import cached_property
-
 from celery.apps.beat import Beat
 
-from .utils import get_celery_app
+from .utils import get_celery_app, get_app_module
 
 
 class BaseService:
@@ -23,25 +20,8 @@ class BaseService:
         self.concurrency = concurrency or 1
 
     @cached_property
-    def app_name(self):
-        try:
-            proj = settings.APP_NAME
-        except AttributeError:
-            django_settings_module = os.environ.get('DJANGO_SETTINGS_MODULE')
-
-            if django_settings_module is None:
-                raise ValueError('DJANGO_SETTINGS_MODULE os variable not exist.')
-
-            proj = django_settings_module.split(".", 1)[0]
-
-        try:
-            app_path = settings.CELERY_APP
-            pkg_name = app_path.split(":", 1)[0]
-            app_module = pkg_name.rsplit('.', 1)[-1]
-        except (ModuleNotFoundError, IndexError):
-            app_module = 'celery'
-
-        return "%s.%s" % (proj, app_module)
+    def app_module(self):
+        return get_app_module()
 
     def start(self):
         raise NotImplementedError
@@ -80,7 +60,7 @@ class LocalWorkerService(BaseService):
         """
         app = self.celery_app
         argv_list = [
-            ('-A', self.app_name),
+            ('-A', self.app_module),
             (self._command, ),
             ('-P', self.pool),
             ('-l', self.loglevel),
@@ -118,7 +98,7 @@ class LocalBeatService(BaseService):
     def start(self):
         app = self.celery_app
         argv_list = [
-            ('-A', self.app_name),
+            ('-A', self.app_module),
             (self._command, ),
             ('-l', self.loglevel),
         ]

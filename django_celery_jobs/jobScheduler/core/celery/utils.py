@@ -1,4 +1,4 @@
-import logging
+import os
 import pkgutil
 import importlib
 
@@ -41,6 +41,27 @@ def get_celery_app():
         raise ImproperlyConfigured("Celery instance is empty, recommended set `CELERY_APP`")
 
     return _default_app
+
+
+def get_app_module():
+    try:
+        proj = settings.APP_NAME
+    except AttributeError:
+        django_settings_module = os.environ.get('DJANGO_SETTINGS_MODULE')
+
+        if django_settings_module is None:
+            raise ValueError('DJANGO_SETTINGS_MODULE os variable not exist.')
+
+        proj = django_settings_module.split(".", 1)[0]
+
+    try:
+        app_path = settings.CELERY_APP
+        pkg_name = app_path.split(":", 1)[0]
+        app_module = pkg_name.rsplit('.', 1)[-1]
+    except (ModuleNotFoundError, IndexError):
+        app_module = 'celery'
+
+    return "%s.%s" % (proj, app_module)
 
 
 def handle_task_router(task, app=None):

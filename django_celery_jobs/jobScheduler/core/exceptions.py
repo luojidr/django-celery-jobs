@@ -17,3 +17,11 @@ class JobLookupError(KeyError):
 
 class OptionError(Exception):
     pass
+
+
+class DeployModeError(Exception):
+    pass
+
+
+class DuplicatedError(Exception):
+    pass
