@@ -7,7 +7,7 @@ __all__ = ['CelerydDeploy']
 
 
 class EntryPoint(BaseDeploy):
-    def get_command_args(self, alias=None):
+    def _get_command_argv(self, alias=None):
         cmd_argv = []
         mode = alias or self.MODE
         options = self.get_options(mode=mode)
@@ -22,14 +22,13 @@ class EntryPoint(BaseDeploy):
     @property
     def command(self):
         args = [(self.MODE,)]
-        cmd_args = self.get_command_args(alias=self.MODE)
-        args.extend(cmd_args)
+        args.extend(self.options)
         return " ".join(chain.from_iterable(args))
 
     @property
-    def args(self):
-        args = self.get_command_args(alias=self.MODE)
-        return " ".join(chain.from_iterable(args[:1]))
+    def options(self):
+        argv = self._get_command_argv(alias=self.MODE)
+        return chain.from_iterable(argv)
 
 
 class WorkerEntryPoint(EntryPoint):

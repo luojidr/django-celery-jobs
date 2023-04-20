@@ -29,6 +29,15 @@ class NamedOption:
             name = option[0].strip('-')
             setattr(self, name, Option(*option))
 
+    def has_option(self, name, alias=None):
+        try:
+            if not hasattr(self, name):
+                getattr(self, str(alias))
+        except AttributeError:
+            return False
+
+        return True
+
 
 class BaseDeploy(six.with_metaclass(ABCMeta)):
     MODE = None
@@ -73,6 +82,6 @@ class BaseDeploy(six.with_metaclass(ABCMeta)):
 
         return options
 
-    @abstractmethod
     def deploy(self):
         """ Deploy using the bash command """
+        raise NotImplementedError
