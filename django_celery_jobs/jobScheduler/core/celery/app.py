@@ -4,6 +4,7 @@ import logging
 import traceback
 
 from celery import Celery
+from django.conf import settings
 from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
 
 from .utils import handle_task_router
@@ -11,12 +12,13 @@ from .utils import handle_task_router
 logger = logging.getLogger("celery.worker")
 
 
-class CeleryAppDispatcher:
+class AppDispatcher:
     APPS_CACHE = {}
 
     def __init__(self, scheduler, entry, **kwargs):
         self.entry = entry
         self.scheduler = scheduler
+        self.app = scheduler.app
 
     def get_task(self):
         job_obj = self._get_job()
@@ -28,6 +30,18 @@ class CeleryAppDispatcher:
         celery_name = 'Celery:{0.host}:{0.virtual}'.format(config_obj)
         if celery_name not in self.APPS_CACHE:
             celery_app = Celery(main=celery_name, broker=config_obj.as_url())
+
+            # Attention timezone, make sure beat's the timezone for scheduled tasks is the same
+            if self.app:
+                timezone = self.app.conf.timezone
+                enable_utc = self.app.conf.enable_utc
+            else:
+                timezone = settings.TIME_ZONE
+                enable_utc = settings.USE_TZ  # TIME_ZONE is UTC, USE_TZ=True
+
+            celery_app.conf.timezone = timezone
+            celery_app.conf.enable_utc = enable_utc
+
             self.APPS_CACHE[celery_name] = celery_app
 
             # Clean existed task

@@ -18,7 +18,7 @@ from django.core.cache.backends.redis import RedisCache
 
 from django_celery_beat.schedulers import DatabaseScheduler
 
-from .app import CeleryAppDispatcher
+from .app import AppDispatcher
 from ..functools import deprecated
 from django_celery_jobs import models
 
@@ -187,7 +187,7 @@ class BeatScheduler(DatabaseScheduler):
         logger.warning("[%s] >>> task<%s> is scheduled, now: %s", *log_args)
 
         # The timing message is sent to different MQ servers
-        dispatcher = CeleryAppDispatcher(self, entry=entry)
+        dispatcher = AppDispatcher(self, entry=entry)
 
         run_date = timezone.now()
         scheduled_kw = dict(sched_id=str(uuid.uuid1()).replace('-', ''), name=entry.task,
