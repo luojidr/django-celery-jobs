@@ -19,7 +19,6 @@ from django.core.cache.backends.redis import RedisCache
 from django_celery_beat.schedulers import DatabaseScheduler
 
 from .app import AppDispatcher
-from ..functools import deprecated
 from django_celery_jobs import models
 
 logger = logging.getLogger("celery.worker")

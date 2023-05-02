@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.1/ref/settings/
 
 import os
 from pathlib import Path
+from datetime import timedelta
 from dotenv import load_dotenv, find_dotenv
 
 load_dotenv(find_dotenv('.env'))
@@ -42,12 +43,17 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+    'corsheaders',
+    'rest_framework_simplejwt',
+
     'django_celery_results',
     'django_celery_beat',
     'django_celery_jobs',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
+
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -159,6 +165,34 @@ CACHES = {
             'pool_class': 'redis.ConnectionPool'
         }
     },
+}
+
+# django-cors-headers
+CORS_ORIGIN_ALLOW_ALL = True
+CORS_ALLOW_CREDENTIALS = True
+CORS_ORIGIN_WHITELIST = []
+CORS_ALLOW_METHODS = ["DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT",]
+CORS_ALLOW_HEADERS = ["*"]
+
+# DjangoRestFramework-SimpleJwt
+# https://django-rest-framework-simplejwt.readthedocs.io/en/latest/getting_started.html
+# https://github.com/jazzband/djangorestframework-simplejwt
+# pip install djangorestframework-simplejwt[crypto]
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_code',
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'AUTH_HEADER_TYPES': ('X-Token',),
+}
+
+# DjangoRestFramework
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    )
 }
 
 # Set Celery App Path
