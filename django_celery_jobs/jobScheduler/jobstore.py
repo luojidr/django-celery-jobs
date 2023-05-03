@@ -8,7 +8,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django_celery_beat.models import PeriodicTask
 
 from .trigger.base import BaseTrigger
-from ..models import JobPeriodicModel
+from ..models import JobPeriodicModel, BeatPeriodicTaskModel
 
 __all__ = ('JobStore', )
 

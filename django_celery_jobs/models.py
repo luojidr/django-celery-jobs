@@ -117,6 +117,7 @@ class JobPeriodicModel(BaseAbstractModel):
                                       default=None, null=True, on_delete=models.SET_NULL)
     is_enabled = models.BooleanField("Start or not", default=False, blank=True)
     max_run_cnt = models.IntegerField("Maximum execution times", default=0, blank=True)
+    first_run_time = models.DateTimeField('First run datetime', blank=True, null=True, default=None)
     deadline_run_time = models.DateTimeField('Deadline run datetime', blank=True, null=True, default=None)
     func_name = models.CharField("Func Name", max_length=100, default='', blank=True)
     task_source_code = models.TextField("Task Source Code", default='', blank=True)
@@ -143,6 +144,24 @@ class JobPeriodicModel(BaseAbstractModel):
         assert func, "PeriodicJobModel<id:%s> hasn't source code" % self.id
         return func
 
+
+class CeleryNativeTaskModel(BaseAbstractModel):
+    name = models.CharField("Name", max_length=500, default='')
+    task = models.CharField("Task", max_length=500, default='')
+    is_hidden = models.BooleanField("Hidden", default=False, blank=True)
+    desc = models.CharField("Desc", max_length=500, default='')
+
+    @classmethod
+    def create_or_update_native_task(cls, **kwargs):
+        task = kwargs.get('task')
+        if task:
+            kwargs['is_hidden'] = task.startswith('celery.')
+
+        native_task = cls.objects.filter(task=task).first()
+        if native_task:
+            native_task.save_attrs(**kwargs)
+
+        return cls.create_object(**kwargs)
 
 class BeatPeriodicTaskModel(PeriodicTask):
     """ django_celery_beat.models:PeriodicTask """

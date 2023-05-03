@@ -1,16 +1,13 @@
 import os
 import pkgutil
-import importlib
-
-from kombu import Queue
-from celery import current_app
-from celery.app.task import Task
 import logging
 import importlib
 import traceback
 
 from django.conf import settings
+from kombu import Queue
 from celery import current_app
+from celery.app.task import Task
 from celery.exceptions import ImproperlyConfigured
 
 from django_celery_jobs import tasks

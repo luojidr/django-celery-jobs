@@ -4,11 +4,11 @@ from datetime import tzinfo
 from pytz import timezone
 from tzlocal import get_localzone
 
-from .core.celery.utils import get_celery_app
-
 from .jobstore import JobStore
 from .trigger.base import BaseTrigger
 from .trigger.cron import CronTrigger
+from .core.celery.utils import get_celery_app, autodiscover_tasks
+from ..models import CeleryNativeTaskModel
 
 
 class JobSchedulerHandler:
@@ -42,6 +42,28 @@ class JobSchedulerHandler:
 
     def __getattr__(self, name):
         raise AttributeError
+
+    @staticmethod
+    def get_celery_native_tasks():
+        tasks = []
+        autodiscover_tasks()
+        app = get_celery_app()
+
+        for task_name, task in app.tasks.items():
+            backend_cls = task.backend.__class__
+            backend_mod = backend_cls.__module__
+            backend_name = backend_cls.__name__
+
+            item = dict(
+                name='',
+                task=task_name,
+                backend=backend_mod + ":" + backend_name,
+                priority=task.priority,
+                ignore_result=task.ignore_result,
+            )
+            tasks.append(item)
+
+        return tasks
 
     def get_jobs(self, job_ids=None):
         return self._lookup_jobstore().get_all_jobs(job_ids)
@@ -78,4 +100,4 @@ class JobSchedulerHandler:
         return self.TRIGGER_CLASSES[trigger](**options)
 
 
-scheduler = JobSchedulerHandler()
+default_scheduler = JobSchedulerHandler()
