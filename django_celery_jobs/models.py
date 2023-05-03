@@ -146,10 +146,13 @@ class JobPeriodicModel(BaseAbstractModel):
 
 
 class CeleryNativeTaskModel(BaseAbstractModel):
-    name = models.CharField("Name", max_length=500, default='')
-    task = models.CharField("Task", max_length=500, default='')
+    name = models.CharField("Name", max_length=500, default='', blank=True)
+    task = models.CharField("Task", max_length=500, db_index=True, default='', blank=True)
+    backend = models.CharField("Backend", max_length=500, default='', blank=True)
+    priority = models.IntegerField("Priority", null=True, default=None, blank=True)
+    ignore_result = models.BooleanField("Ignore Result", default=False, blank=True)
     is_hidden = models.BooleanField("Hidden", default=False, blank=True)
-    desc = models.CharField("Desc", max_length=500, default='')
+    desc = models.CharField("Desc", max_length=500, default='', blank=True)
 
     @classmethod
     def create_or_update_native_task(cls, **kwargs):
@@ -162,6 +165,7 @@ class CeleryNativeTaskModel(BaseAbstractModel):
             native_task.save_attrs(**kwargs)
 
         return cls.create_object(**kwargs)
+
 
 class BeatPeriodicTaskModel(PeriodicTask):
     """ django_celery_beat.models:PeriodicTask """

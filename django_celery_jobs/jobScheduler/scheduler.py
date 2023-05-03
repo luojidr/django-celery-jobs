@@ -55,7 +55,6 @@ class JobSchedulerHandler:
             backend_name = backend_cls.__name__
 
             item = dict(
-                name='',
                 task=task_name,
                 backend=backend_mod + ":" + backend_name,
                 priority=task.priority,

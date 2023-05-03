@@ -1,9 +1,12 @@
 import logging
 from datetime import datetime
 
+from django_celery_beat.models import PeriodicTask
 from celery.signals import beat_init, celeryd_init, task_internal_error, import_modules
 
 from .utils import autodiscover_tasks
+from django_celery_jobs.jobScheduler.trigger.cron import CronTrigger
+from django_celery_jobs.tasks.task_shared_scheduler import sync_celery_native_tasks
 
 logger = logging.getLogger("celery.worker")
 
@@ -14,6 +17,16 @@ def load_worker(sender, instance, conf, options, **kwargs):
 
     if not conf.result_backend:
         logger.warning("Setting `result_backend` is strongly recommended.")
+
+    # Auto sync celery task to database
+    trigger = CronTrigger.from_crontab('* * * * *')  # Every minute
+    cron = trigger.get_trigger_schedule()
+
+    name = sync_celery_native_tasks.name
+    beat_task = PeriodicTask.objects.filter(task=name, enabled=True).first()
+
+    if not beat_task:
+        PeriodicTask.objects.create(name=name, task=name, crontab_id=cron['crontab_id'])
 
 
 @beat_init.connect

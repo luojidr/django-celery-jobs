@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model, authenticate
 
 from rest_framework.views import APIView
 from rest_framework.generics import GenericAPIView
-from rest_framework.generics import RetrieveAPIView
+from rest_framework.generics import RetrieveAPIView, ListAPIView
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 
@@ -82,11 +82,11 @@ class UserLogOutApi(GenericAPIView):
         return Response(data=dict(code=200, message='ok', data=None))
 
 
-class ListNativeJobApi(APIView):
+class ListNativeJobApi(ListAPIView):
     def get(self, request, *args, **kwargs):
         """ native task list """
-        tasks = default_scheduler.get_celery_native_tasks()
-        return Response(data=dict(code=200, message='ok', data=tasks))
+        # tasks = default_scheduler.get_celery_native_tasks()
+        # return Response(data=dict(code=200, message='ok', data=tasks))
 
 
 
