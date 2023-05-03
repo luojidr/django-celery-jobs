@@ -51,18 +51,17 @@ def exception_handler(exc, context):
 
 
 class MyJWTAuthentication(JWTAuthentication):
-    def get_cookie(self, request):
-        cookies = request.COOKIES
-        token_key = api_settings.AUTH_HEADER_TYPES[0]
-        x_token = cookies.get(token_key)
+    def get_header(self, request):
+        key = api_settings.AUTH_HEADER_TYPES[0]
+        x_token = request.headers.get(key)
 
         if not x_token:
-            raise InvalidToken('Path: %s not token in cookies', request.path)
+            raise InvalidToken('Path: %s not token in headers', request.path)
 
-        return (token_key + " " + x_token).encode('utf-8')
+        return (key + " " + x_token).encode('utf-8')
 
 
 setattr(drf_views, 'exception_handler', exception_handler)
-JWTAuthentication.get_header = MyJWTAuthentication.get_cookie
+JWTAuthentication.get_header = MyJWTAuthentication.get_header
 
 

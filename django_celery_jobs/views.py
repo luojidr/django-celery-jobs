@@ -1,5 +1,6 @@
 import logging
 
+from django.contrib.auth import logout
 from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import PermissionDenied
 from django.contrib.auth import get_user_model, authenticate
@@ -54,7 +55,7 @@ class UserJwtTokenApi(TokenObtainPairView):
         response = super().post(request, *args, **kwargs)
         token_data = response.data
 
-        if token_data.get('access_token'):
+        if token_data.get('token'):
             data = dict(code=200, message='ok', data=token_data)
         else:
             data = dict(code=5001, message=token_data.get('detail', ''), data=None)
@@ -66,7 +67,16 @@ class DetailUserApi(RetrieveAPIView):
     serializer_class = UserSerializer
 
     def get_object(self):
-        if not isinstance(self.request.user, AnonymousUser):
+        if isinstance(self.request.user, AnonymousUser):
             raise PermissionDenied("Token is invalid.")
 
         return self.request.user
+
+
+class UserLogOutApi(GenericAPIView):
+    def post(self, request, *args, **kwargs):
+        """ log out """
+        logout(request)
+        return Response(data=dict(code=200, message='ok', data=None))
+
+
