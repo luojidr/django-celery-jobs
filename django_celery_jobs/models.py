@@ -141,7 +141,7 @@ class JobPeriodicModel(BaseAbstractModel):
         exec(func_source_code, namespace)
         func = namespace.get(self.func_name)
 
-        assert func, "PeriodicJobModel<id:%s> hasn't source code" % self.id
+        assert func, "PeriodicJobModel<id:%s>'s `func_name` does not exist" % self.id
         return func
 
 
@@ -154,6 +154,10 @@ class CeleryNativeTaskModel(BaseAbstractModel):
     is_hidden = models.BooleanField("Hidden", default=False, blank=True)
     desc = models.CharField("Desc", max_length=500, default='', blank=True)
 
+    class Meta:
+        db_table = 'django_celery_jobs_native_jobs'
+        ordering = ["-id"]
+
     @classmethod
     def create_or_update_native_task(cls, **kwargs):
         task = kwargs.get('task')
@@ -162,7 +166,7 @@ class CeleryNativeTaskModel(BaseAbstractModel):
 
         native_task = cls.objects.filter(task=task).first()
         if native_task:
-            native_task.save_attrs(**kwargs)
+            return native_task.save_attrs(**kwargs)
 
         return cls.create_object(**kwargs)
 

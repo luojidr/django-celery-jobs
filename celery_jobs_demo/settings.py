@@ -178,9 +178,10 @@ CORS_ALLOW_HEADERS = ["*"]
 # https://django-rest-framework-simplejwt.readthedocs.io/en/latest/getting_started.html
 # https://github.com/jazzband/djangorestframework-simplejwt
 # pip install djangorestframework-simplejwt[crypto]
+days = 7 if DEBUG else 1
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=days),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=days),
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_code',
     'ALGORITHM': 'HS256',
@@ -192,8 +193,12 @@ SIMPLE_JWT = {
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    )
+    ),
+
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
 }
+
 
 # Set Celery App Path
 # CELERY_APP = 'celery_jobs_demo.celery:celery_app'

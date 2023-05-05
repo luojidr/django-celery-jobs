@@ -111,17 +111,27 @@ class SyncScheduledTask:
             return
 
         task_name = func.__name__
-        self.scheduler.app.tasks.unregister(task_name)
         remark = job.remark.split('(', 1)[0]
+
+        if task_name in self.scheduler.app.tasks:
+            self.scheduler.app.tasks.unregister(task_name)
 
         with transaction.atomic():
             if deadline_run_time and timezone.datetime.now() > deadline_run_time:
                 job.is_enabled = False
                 job.remark = '%s(自动监控->停止)' % remark
-                job.periodic_task.enabled = False
-
                 job.save()
-                job.periodic_task.save()
+
+                if job.periodic_task:
+                    beat_periodic_task = job.periodic_task
+                else:
+                    query = dict(name=task_name, enabled=True)
+                    beat_periodic_task = models.BeatPeriodicTaskModel.objects.filter(**query).first()
+
+                if beat_periodic_task:
+                    beat_periodic_task.enabled = False
+                    beat_periodic_task.description = '任务失效, 自动监控停止'
+                    beat_periodic_task.save()
 
                 logger.warning("Job<%s> is stop, now: %s", job.title, timezone.datetime.now())
 

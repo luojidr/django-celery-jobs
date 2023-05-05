@@ -7,5 +7,6 @@ urlpatterns = [
     re_path("^user/info$", view=views.DetailUserApi.as_view(), name='jobScheduler_user_info'),
     re_path("^user/logout$", view=views.UserLogOutApi.as_view(), name='jobScheduler_user_logout'),
 
-    re_path("^native/job/list$", view=views.ListNativeJobApi.as_view(), name='jobScheduler_native_job'),
+    re_path("^native/job/list$", view=views.ListNativeJobApi.as_view(), name='jobScheduler_native_job_list'),
+    re_path("^native/job/update$", view=views.UpdateNativeJobApi.as_view(), name='jobScheduler_native_job_update'),
 ]

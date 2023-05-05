@@ -1,6 +1,13 @@
 import logging
 import traceback
 
+from django.conf import settings
+from django.utils.deprecation import MiddlewareMixin
+from django.http.response import HttpResponseBase
+from django.template.response import TemplateResponse
+from django.http import JsonResponse, StreamingHttpResponse
+
+from rest_framework import status
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework import views as drf_views
@@ -30,7 +37,7 @@ def _get_traceback(exc):
         exc_args = exc.args
         message = (exc_args[1] if len(exc_args) > 1 else exc_args[0]) if exc_args else str(exc)
 
-    return code, message
+    return code or 5004, message
 
 
 def exception_handler(exc, context):
@@ -61,7 +68,34 @@ class MyJWTAuthentication(JWTAuthentication):
         return (key + " " + x_token).encode('utf-8')
 
 
+class ResponseMiddleware(MiddlewareMixin):
+    def process_response(self, request, response):
+        if isinstance(response, (StreamingHttpResponse, TemplateResponse)):
+            return response
+
+        if isinstance(response, HttpResponseBase) and response.get("Content-Disposition"):
+            return response
+
+        data = dict(code=200, message='ok', data=None)
+        raw_result = response.data
+
+        # Api response
+        if status.is_success(response.status_code):
+            data.update(data=raw_result)
+        else:
+            data.update(
+                code=raw_result.pop("code", None) or response.status_code,
+                message=str(raw_result.pop("message", ""))
+            )
+
+        return JsonResponse(data=data)
+
+
+middleware = 'django_celery_jobs.hooks.ResponseMiddleware'
 setattr(drf_views, 'exception_handler', exception_handler)
 JWTAuthentication.get_header = MyJWTAuthentication.get_header
+
+if middleware not in settings.MIDDLEWARE:
+    settings.MIDDLEWARE.append(middleware)
 
 
