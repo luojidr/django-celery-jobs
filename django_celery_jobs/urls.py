@@ -9,4 +9,10 @@ urlpatterns = [
 
     re_path("^native/job/list$", view=views.ListNativeJobApi.as_view(), name='jobScheduler_native_job_list'),
     re_path("^native/job/update$", view=views.UpdateNativeJobApi.as_view(), name='jobScheduler_native_job_update'),
+
+    # 周期性人物
+    re_path("^periodic/job/cron/parse$", view=views.CronExpressionApi.as_view(), name='jobScheduler_cron_parse'),
+    re_path("^periodic/job/list$", view=views.ListJobPeriodicApi.as_view(), name='jobScheduler_job_list'),
+    re_path("^periodic/job/add$", view=views.CreateJobPeriodicApi.as_view(), name='jobScheduler_job_create'),
+    re_path("^periodic/job/update$", view=views.UpdateDestroyJobPeriodicApi.as_view(), name='jobScheduler_job_update_delete'),
 ]

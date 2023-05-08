@@ -11,7 +11,7 @@ from django.core.validators import MaxValueValidator
 
 from celery import states
 from celery.utils.nodenames import default_nodename
-from django_celery_beat.models import PeriodicTask, CrontabSchedule, CrontabSchedule
+from django_celery_beat.models import PeriodicTask, cronexp
 from django_celery_results.models import TaskResult, TASK_STATE_CHOICES
 
 from .jobScheduler.utils import get_ip_addr
@@ -110,7 +110,7 @@ class JobConfigModel(BaseAbstractModel):
 
 
 class JobPeriodicModel(BaseAbstractModel):
-    title = models.CharField("Task Title", unique=True, max_length=255, default='')
+    title = models.CharField("Task Title", unique=True, max_length=255, default='', blank=True)
     config = models.ForeignKey(to=JobConfigModel, related_name="config",
                                default=None, null=True, on_delete=models.SET_NULL)
     periodic_task = models.ForeignKey(to=PeriodicTask, related_name="periodic_task",
@@ -143,6 +143,18 @@ class JobPeriodicModel(BaseAbstractModel):
 
         assert func, "PeriodicJobModel<id:%s>'s `func_name` does not exist" % self.id
         return func
+
+    @property
+    def cron_expr(self):
+        crontab = self.periodic_task.crontab
+        return '{} {} {} {} {}'.format(
+            cronexp(crontab.minute), cronexp(crontab.hour), cronexp(crontab.day_of_month),
+            cronexp(crontab.month_of_year), cronexp(crontab.day_of_week)
+        )
+
+    @property
+    def native_task_name(self):
+        pass
 
 
 class CeleryNativeTaskModel(BaseAbstractModel):

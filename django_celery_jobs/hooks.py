@@ -53,7 +53,7 @@ def exception_handler(exc, context):
 
     logger.error(traceback.format_exc())
 
-    response = Response(data=dict(code=code, message=message))
+    response = Response(data=dict(code=code, message=message), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     return response
 
 
@@ -91,10 +91,10 @@ class ResponseMiddleware(MiddlewareMixin):
         return JsonResponse(data=data)
 
 
-middleware = 'django_celery_jobs.hooks.ResponseMiddleware'
 setattr(drf_views, 'exception_handler', exception_handler)
 JWTAuthentication.get_header = MyJWTAuthentication.get_header
 
+middleware = 'django_celery_jobs.hooks.ResponseMiddleware'
 if middleware not in settings.MIDDLEWARE:
     settings.MIDDLEWARE.append(middleware)
 
