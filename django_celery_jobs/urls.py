@@ -14,5 +14,5 @@ urlpatterns = [
     re_path("^periodic/job/cron/parse$", view=views.CronExpressionApi.as_view(), name='jobScheduler_cron_parse'),
     re_path("^periodic/job/list$", view=views.ListJobPeriodicApi.as_view(), name='jobScheduler_job_list'),
     re_path("^periodic/job/add$", view=views.CreateJobPeriodicApi.as_view(), name='jobScheduler_job_create'),
-    re_path("^periodic/job/update$", view=views.UpdateDestroyJobPeriodicApi.as_view(), name='jobScheduler_job_update_delete'),
+    re_path("^periodic/job/update$", view=views.UpdateDestroyJobPeriodicApi.as_view(), name='jobScheduler_job_update'),
 ]

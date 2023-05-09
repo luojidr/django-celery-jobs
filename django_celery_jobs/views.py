@@ -1,4 +1,3 @@
-import json
 import logging
 
 import croniter
@@ -19,7 +18,6 @@ from rest_framework.generics import RetrieveAPIView, ListAPIView, UpdateAPIView,
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from . import serializers, models
-from .jobScheduler.trigger.cron import CronTrigger
 from django_celery_jobs.tasks.task_shared_scheduler import sync_celery_native_tasks
 
 logger = logging.getLogger('django')
@@ -105,7 +103,7 @@ class CronExpressionApi(APIView):
     def get_run_next_time_list(cron_expr, max_run_cnt, job_id=None):
         cron_expr_list = [s.strip() for s in cron_expr.split(" ") if s.strip()]
         if len(cron_expr_list) != 5:
-            return Response(data=dict(data=[], code=6001, message='Cron表达式格式错误'))
+            raise ValueError(f'Cron表达式<{cron_expr}>格式错误')
 
         dt_fmt = "%Y-%m-%d %H:%M:%S"
         job = models.JobPeriodicModel.objects.filter(id=job_id or 0, is_del=False).first()
@@ -154,45 +152,58 @@ class CreateJobPeriodicApi(CreateAPIView):
     serializer_class = serializers.JobPeriodicSerializer
 
     def perform_create(self, serializer):
-        native_job_id = serializer.initial_data['native_job_id']
-        native_job = models.CeleryNativeTaskModel.objects.get(id=native_job_id)
-
-        beat_task_name = native_job.task
-        beat_task_obj = models.BeatPeriodicTaskModel.objects.get(name=beat_task_name, enabled=True)
-
-        cron_expr = serializer.initial_data['cron_expr']
-        trigger = CronTrigger.from_crontab(expr=cron_expr)
-        crontab_id = trigger.get_trigger_schedule()['crontab_id']
-
-        # Other kwargs
-        max_run_cnt = serializer.validated_data.get('max_run_cnt', 0)
-        is_enabled = serializer.validated_data.get('is_enabled', False)
-        run_next_time_list = CronExpressionApi.get_run_next_time_list(cron_expr, max_run_cnt)
-        kwargs = dict(
-            periodic_task_id=beat_task_obj.id,
-            first_run_time=timezone.datetime.now(),
-            deadline_run_time=None if not max_run_cnt
-            else timezone.datetime.strptime(run_next_time_list[-1], "%Y-%m-%d %H:%M:%S")
-        )
-
-        with transaction.atomic():
-            current_now = timezone.datetime.now()
-            simple_task_name = beat_task_name.rsplit('.', 1)[-1] + current_now.strftime("_%Y%m%d%H%M%S_%f")
-
-            job_obj = serializer.save(**kwargs)
-
-            periodic_task_obj = models.BeatPeriodicTaskModel.objects.create(
-                name=simple_task_name, task=beat_task_name,
-                enabled=is_enabled, crontab_id=crontab_id,
-                kwargs=json.dumps(dict(job_id=job_obj.id)),
-            )
-
-            job_obj.periodic_task_id = periodic_task_obj.id
-            job_obj.save()
+        self.serializer_class.Meta.model.perform_save(serializer)
 
 
-class UpdateDestroyJobPeriodicApi(GenericAPIView):
+class UpdateDestroyJobPeriodicApi(UpdateAPIView):
     serializer_class = serializers.JobPeriodicSerializer
 
+    def get_object(self):
+        job_id = int(self.request.data.get('id') or 0)
+        return models.JobPeriodicModel.objects.get(id=job_id, is_del=False)
+
+    def perform_update(self, serializer):
+        self.serializer_class.Meta.model.perform_save(serializer)
+
+    def set_enabled(self, request, *args, **kwargs):
+        job_id = int(self.request.data.get('id') or 0)
+        is_enabled = self.request.data.get('is_enabled')
+        job = models.JobPeriodicModel.objects.filter(id=job_id, is_del=False).first()
+
+        if not job:
+            return Response(data=dict(message=f'任务<id:{job_id}>不存在', code=6007))
+
+        with transaction.atomic():
+            job.is_enabled = is_enabled
+            job.periodic_task.enabled = is_enabled
+
+            job.periodic_task.save()
+            job.save()
+
+        action = is_enabled and "启动" or "暂停"
+        return Response(data=dict(message=f'{action}任务<id:{job_id}>成功'))
+
+    def delete(self, request, *args, **kwargs):
+        job_id = int(self.request.data.get('id') or 0)
+        job = models.JobPeriodicModel.objects.filter(id=job_id, is_del=False).first()
+
+        if not job:
+            return Response(data=dict(message=f'任务<id:{job_id}>不存在', code=6008))
+
+        with transaction.atomic():
+            job.is_del = False
+            job.is_enabled = False
+            job.periodic_task.enabled = False
+
+            job.periodic_task.save()
+            job.save()
+
+        return Response(data=dict(message=f'删除任务<id:{job_id}>成功'))
+
     def post(self, request, *args, **kwargs):
-        pass
+        action = request.data.get('action')
+        assert hasattr(self, action), '不合法的操作'
+
+        return getattr(self, action)(request, *args, **kwargs)
+
+

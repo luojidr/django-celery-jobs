@@ -1,13 +1,13 @@
-import re
+import json
 import logging
 import platform
 import traceback
-from urllib.parse import quote_plus
 from itertools import chain
+from urllib.parse import quote_plus
 
-from django.db import models
+from django.utils import timezone
+from django.db import models, transaction
 from django.contrib.auth import get_user_model
-from django.core.validators import MaxValueValidator
 
 from celery import states
 from celery.utils.nodenames import default_nodename
@@ -15,6 +15,7 @@ from django_celery_beat.models import PeriodicTask, cronexp
 from django_celery_results.models import TaskResult, TASK_STATE_CHOICES
 
 from .jobScheduler.utils import get_ip_addr
+from .jobScheduler.trigger.cron import CronTrigger
 from .jobScheduler.core.enums.deploy import DeployModeEnum
 from .jobScheduler.core.exceptions import DeployModeError
 
@@ -132,6 +133,51 @@ class JobPeriodicModel(BaseAbstractModel):
         db_table = 'django_celery_jobs_periodic_task'
         ordering = ["-id"]
 
+    @classmethod
+    def perform_save(cls, serializer):
+        """ Create or Update to save """
+        from django_celery_jobs.views import CronExpressionApi
+
+        job_id = int(serializer.initial_data.get('id') or 0)
+        cron_expr = serializer.initial_data['cron_expr']
+        max_run_cnt = serializer.validated_data.get('max_run_cnt', 0)
+
+        trigger = CronTrigger.from_crontab(expr=cron_expr)
+        crontab_id = trigger.get_trigger_schedule()['crontab_id']
+
+        # Other kwargs to create or update
+        kwargs = {}
+        if max_run_cnt:
+            run_next_time_list = CronExpressionApi.get_run_next_time_list(cron_expr, max_run_cnt)
+            kwargs['deadline_run_time'] = timezone.datetime.strptime(run_next_time_list[-1], "%Y-%m-%d %H:%M:%S")
+
+        if not job_id:
+            # create periodic task
+            native_job_id = serializer.initial_data['native_job_id']
+            native_job = CeleryNativeTaskModel.objects.get(id=native_job_id)
+
+            beat_name = native_job.task
+            beat_periodic_task_obj = BeatPeriodicTaskModel(
+                task=beat_name,
+                name=beat_name.rsplit('.', 1)[-1] + timezone.datetime.now().strftime("_%Y%m%d%H%M%S_%f"),
+            )
+            kwargs['first_run_time'] = timezone.datetime.now()
+
+        else:
+            # update periodic task
+            beat_periodic_task_obj = serializer.instance.periodic_task
+
+        with transaction.atomic():
+            job_obj = serializer.save(**kwargs)
+
+            beat_periodic_task_obj.crontab_id = crontab_id
+            beat_periodic_task_obj.enabled = job_obj.is_enabled
+            beat_periodic_task_obj.kwargs = json.dumps(dict(job_id=job_obj.id))
+            beat_periodic_task_obj.save()
+
+            job_obj.periodic_task_id = beat_periodic_task_obj.id
+            job_obj.save()
+
     def compile_task_func(self):
         if not self.task_source_code:
             return
@@ -154,12 +200,13 @@ class JobPeriodicModel(BaseAbstractModel):
 
     @property
     def native_task_name(self):
-        pass
+        native_obj = CeleryNativeTaskModel.objects.filter(task=self.periodic_task.task, is_del=False).first()
+        return native_obj.name if native_obj else ''
 
 
 class CeleryNativeTaskModel(BaseAbstractModel):
     name = models.CharField("Name", max_length=500, default='', blank=True)
-    task = models.CharField("Task", max_length=500, db_index=True, default='', blank=True)
+    task = models.CharField("Task", max_length=500, unique=True, default='', blank=True)
     backend = models.CharField("Backend", max_length=500, default='', blank=True)
     priority = models.IntegerField("Priority", null=True, default=None, blank=True)
     ignore_result = models.BooleanField("Ignore Result", default=False, blank=True)

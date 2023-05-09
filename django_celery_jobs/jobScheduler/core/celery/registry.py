@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 
+from django.conf import settings
 from celery.signals import beat_init, celeryd_init, task_internal_error, import_modules
 
 from .utils import autodiscover_tasks
@@ -19,15 +20,18 @@ def load_worker(sender, instance, conf, options, **kwargs):
     from django_celery_jobs.jobScheduler.trigger.cron import CronTrigger
     from django_celery_jobs.tasks.task_shared_scheduler import sync_celery_native_tasks
 
-    # Auto sync celery task to database
-    trigger = CronTrigger.from_crontab('*/5 * * * *')  # Every minute
-    cron = trigger.get_trigger_schedule()
+    sync_celery_native_tasks()
 
-    name = sync_celery_native_tasks.name
-    beat_task = PeriodicTask.objects.filter(task=name, enabled=True).first()
+    # Pause: Auto sync celery task to database
+    if getattr(settings, ' DJANGO_CELERY_NATIVE_TASK_SYNC', False):
+        trigger = CronTrigger.from_crontab('*/5 * * * *')  # Every minute
+        cron = trigger.get_trigger_schedule()
 
-    if not beat_task:
-        PeriodicTask.objects.create(name=name, task=name, crontab_id=cron['crontab_id'])
+        name = sync_celery_native_tasks.name
+        beat_task = PeriodicTask.objects.filter(task=name, enabled=True).first()
+
+        if not beat_task:
+            PeriodicTask.objects.create(name=name, task=name, crontab_id=cron['crontab_id'])
 
 
 @beat_init.connect

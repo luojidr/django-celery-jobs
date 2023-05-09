@@ -76,7 +76,7 @@ class CronTrigger(BaseTrigger):
         return next_time_list
 
     def get_trigger_schedule(self):
-        obj, created = CrontabSchedule.objects.get_or_create(**self._crons)
+        obj, created = CrontabSchedule.objects.get_or_create(**self._crons, timezone=self.timezone)
         return dict(crontab_id=obj.id)
 
     def __str__(self):
