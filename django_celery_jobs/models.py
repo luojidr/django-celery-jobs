@@ -14,10 +14,10 @@ from celery.utils.nodenames import default_nodename
 from django_celery_beat.models import PeriodicTask, cronexp
 from django_celery_results.models import TaskResult, TASK_STATE_CHOICES
 
-from .jobScheduler.utils import get_ip_addr
 from .jobScheduler.trigger.cron import CronTrigger
 from .jobScheduler.core.enums.deploy import DeployModeEnum
 from .jobScheduler.core.exceptions import DeployModeError
+from .jobScheduler.utils import get_ip_addr, get_trigger_next_range
 
 UserModel = get_user_model()
 DEFAULT_TIME = "1979-01-01 00:00:00"
@@ -136,8 +136,6 @@ class JobPeriodicModel(BaseAbstractModel):
     @classmethod
     def perform_save(cls, serializer):
         """ Create or Update to save """
-        from django_celery_jobs.views import CronExpressionApi
-
         job_id = int(serializer.initial_data.get('id') or 0)
         cron_expr = serializer.initial_data['cron_expr']
         max_run_cnt = serializer.validated_data.get('max_run_cnt', 0)
@@ -148,7 +146,7 @@ class JobPeriodicModel(BaseAbstractModel):
         # Other kwargs to create or update
         kwargs = {}
         if max_run_cnt:
-            run_next_time_list = CronExpressionApi.get_run_next_time_list(cron_expr, max_run_cnt)
+            run_next_time_list = get_trigger_next_range(trigger, run_times=max_run_cnt)
             kwargs['deadline_run_time'] = timezone.datetime.strptime(run_next_time_list[-1], "%Y-%m-%d %H:%M:%S")
 
         if not job_id:

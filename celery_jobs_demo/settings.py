@@ -45,6 +45,7 @@ INSTALLED_APPS = [
 
     'corsheaders',
     'rest_framework_simplejwt',
+    'django_extensions',
 
     'django_celery_results',
     'django_celery_beat',
@@ -68,6 +69,7 @@ ROOT_URLCONF = 'celery_jobs_demo.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        # 'DIRS': [str(BASE_DIR / 'templates')],  # HTML 文件存储位置
         'DIRS': [],
         'APP_DIRS': True,
         'OPTIONS': {
@@ -146,10 +148,10 @@ CACHES = {
     'default': {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
 
-        # 必选，格式：redis://username:password@host:port (redis端口默认6379)
-        # 无验证：     redis://127.0.0.1:6379
-        # 仅密码验证： redis://:password@127.0.0.1:6379
-        # 完全验证：   redis://username:password@127.0.0.1:6379
+        # schema format: redis://username:password@host:port (redis default port: 6379)
+        # No Authentication:                redis://127.0.0.1:6379
+        # Password-only Authentication:     redis://:password@127.0.0.1:6379
+        # Username-Password Authentication: redis://username:password@127.0.0.1:6379
         "LOCATION": "redis://{user}:{pwd}@{host}:{port}".format(
             user=os.getenv('REDIS:USER'), pwd=os.getenv('REDIS:PASSWORD'),
             host=os.getenv('REDIS:HOST'), port=os.getenv('REDIS:PORT'),
@@ -186,7 +188,7 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_code',
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': SECRET_KEY,
-    'AUTH_HEADER_TYPES': ('X-Token',),
+    'AUTH_HEADER_TYPES': ('XX-Token',),
 }
 
 # DjangoRestFramework

@@ -3,9 +3,8 @@ import traceback
 
 from django.conf import settings
 from django.utils.deprecation import MiddlewareMixin
-from django.http.response import HttpResponseBase
 from django.template.response import TemplateResponse
-from django.http import JsonResponse, StreamingHttpResponse
+from django.http import JsonResponse, StreamingHttpResponse, HttpResponseBase, HttpResponseNotFound
 
 from rest_framework import status
 from rest_framework.exceptions import APIException
@@ -70,10 +69,13 @@ class MyJWTAuthentication(JWTAuthentication):
 
 class ResponseMiddleware(MiddlewareMixin):
     def process_response(self, request, response):
-        if isinstance(response, (StreamingHttpResponse, TemplateResponse)):
+        if isinstance(response, (StreamingHttpResponse, TemplateResponse, HttpResponseNotFound)):
             return response
 
         if isinstance(response, HttpResponseBase) and response.get("Content-Disposition"):
+            return response
+
+        if 'application/json' not in response.headers.get('Content-Type'):
             return response
 
         data = dict(code=200, message='ok', data=None)

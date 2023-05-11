@@ -18,26 +18,36 @@ def load_worker(sender, instance, conf, options, **kwargs):
 
     from django_celery_beat.models import PeriodicTask
     from django_celery_jobs.jobScheduler.trigger.cron import CronTrigger
-    from django_celery_jobs.tasks.task_shared_scheduler import sync_celery_native_tasks
+    from django_celery_jobs.tasks.task_synchronous_jobs import sync_celery_native_tasks
 
     sync_celery_native_tasks()
 
     # Pause: Auto sync celery task to database
     if getattr(settings, ' DJANGO_CELERY_NATIVE_TASK_SYNC', False):
-        trigger = CronTrigger.from_crontab('*/5 * * * *')  # Every minute
-        cron = trigger.get_trigger_schedule()
+        trigger = CronTrigger.from_crontab('*/5 * * * *')  # Every 5 minute
+        crontab_id = trigger.get_trigger_schedule()['crontab_id']
 
         name = sync_celery_native_tasks.name
         beat_task = PeriodicTask.objects.filter(task=name, enabled=True).first()
 
         if not beat_task:
-            PeriodicTask.objects.create(name=name, task=name, crontab_id=cron['crontab_id'])
+            PeriodicTask.objects.create(name=name, task=name, crontab_id=crontab_id)
 
 
 @beat_init.connect
 def load_beat(sender, **kwargs):
     logging.warning('BeatScheduler must be injected first, now: %s', datetime.now())
     logging.warning('BeatScheduler => sender: %s, kwargs: %s', sender, kwargs)
+
+    from django_celery_beat.models import PeriodicTask
+    from django_celery_jobs.jobScheduler.trigger.cron import CronTrigger
+    from django_celery_jobs.tasks.task_synchronous_jobs import watch_periodic_tasks
+
+    trigger = CronTrigger.from_crontab('* * * * *')
+    PeriodicTask.objects.get_or_create(
+        name=watch_periodic_tasks.name, task=watch_periodic_tasks.name,
+        crontab_id=trigger.get_trigger_schedule()['crontab_id'], enabled=True,
+    )
 
 
 @import_modules.connect

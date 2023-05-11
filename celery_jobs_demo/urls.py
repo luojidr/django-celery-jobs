@@ -20,5 +20,5 @@ from django_celery_jobs import urls
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/job-scheduler/', include(urls.urlpatterns))
+    path('', include(urls.urlpatterns))
 ]

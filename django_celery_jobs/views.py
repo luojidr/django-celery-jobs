@@ -1,10 +1,9 @@
 import logging
 
-import croniter
-
-from django.db import transaction
+from django.shortcuts import render
+from django.views.generic import TemplateView
 from django.db.models import Q
-from django.utils import timezone
+from django.db import transaction
 from django.contrib.auth import logout
 from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import PermissionDenied
@@ -18,9 +17,16 @@ from rest_framework.generics import RetrieveAPIView, ListAPIView, UpdateAPIView,
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from . import serializers, models
-from django_celery_jobs.tasks.task_shared_scheduler import sync_celery_native_tasks
+from .jobScheduler.trigger.cron import CronTrigger
+from .jobScheduler.utils import get_trigger_next_range
+from django_celery_jobs.tasks.task_synchronous_jobs import sync_celery_native_tasks
 
 logger = logging.getLogger('django')
+
+
+class IndexView(TemplateView):
+    # template_name = ''
+    template_name = 'index.html'
 
 
 class UserLoginApi(GenericAPIView):
@@ -99,38 +105,16 @@ class UpdateNativeJobApi(UpdateAPIView):
 
 
 class CronExpressionApi(APIView):
-    @staticmethod
-    def get_run_next_time_list(cron_expr, max_run_cnt, job_id=None):
-        cron_expr_list = [s.strip() for s in cron_expr.split(" ") if s.strip()]
-        if len(cron_expr_list) != 5:
-            raise ValueError(f'Cron表达式<{cron_expr}>格式错误')
-
-        dt_fmt = "%Y-%m-%d %H:%M:%S"
-        job = models.JobPeriodicModel.objects.filter(id=job_id or 0, is_del=False).first()
-
-        if job:
-            first_time = job.first_run_time
-            start_time = timezone.datetime.strptime(first_time, dt_fmt) if first_time else timezone.datetime.now()
-        else:
-            start_time = timezone.datetime.now()
-
-        run_time_list = []
-        cron = croniter.croniter(" ".join(cron_expr_list), start_time)
-
-        # 显示最近10次执行时间
-        for i in range(max_run_cnt):
-            next_run_time = cron.get_next(timezone.datetime)
-            run_time_list.append(next_run_time.strftime(dt_fmt))
-
-        return run_time_list
-
     def get(self, request, *args, **kwargs):
         job_id = request.query_params.get('job_id', 0)
         expression = request.query_params.get('cron_expr', '')
-        max_run_cnt = int(request.query_params.get('max_run_cnt')) or 10
+        max_run_cnt = int(request.query_params.get('max_run_cnt'))
 
-        run_time_list = self.get_run_next_time_list(expression, max_run_cnt, job_id=job_id)
-        return Response(data=run_time_list)
+        trigger = CronTrigger.from_crontab(expression)
+        job = models.JobPeriodicModel.objects.filter(id=job_id or 0, is_del=False).first()
+        run_next_range = get_trigger_next_range(trigger, start_time=job and job.first_run_time, run_times=max_run_cnt)
+
+        return Response(data=run_next_range)
 
 
 class ListJobPeriodicApi(ListAPIView):
