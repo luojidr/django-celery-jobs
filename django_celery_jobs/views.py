@@ -190,4 +190,3 @@ class UpdateDestroyJobPeriodicApi(UpdateAPIView):
 
         return getattr(self, action)(request, *args, **kwargs)
 
-

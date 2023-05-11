@@ -35,11 +35,14 @@ class CeleryNativeTaskSerializer(serializers.ModelSerializer):
 
 
 class JobPeriodicSerializer(serializers.ModelSerializer):
+    args = serializers.JSONField(required=False, read_only=True, allow_null=True, source='periodic_task.args')
+    kwargs = serializers.JSONField(required=False, read_only=True, allow_null=True, source='periodic_task.kwargs')
+
     # drf自动转换时间格式
     first_run_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S', required=False, allow_null=True, help_text="首次执行时间")
     deadline_run_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S', required=False, allow_null=True, help_text="截止执行时间")
 
     class Meta:
         model = models.JobPeriodicModel
-        read_only_fields = ['cron_expr', 'native_task_name']
+        read_only_fields = ['cron_expr', 'native_task_name', 'args', 'kwargs']
         fields = model.fields() + read_only_fields
