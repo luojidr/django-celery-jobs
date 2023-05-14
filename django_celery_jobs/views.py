@@ -6,12 +6,12 @@ from django.db.models import Q
 from django.db import transaction
 from django.contrib.auth import logout
 from django.contrib.auth.models import AnonymousUser
-from django.core.exceptions import PermissionDenied
 from django.contrib.auth import get_user_model, authenticate
+from django.core.exceptions import PermissionDenied
 
 
-from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.response import Response
 from rest_framework.generics import GenericAPIView
 from rest_framework.generics import RetrieveAPIView, ListAPIView, UpdateAPIView, CreateAPIView
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -21,21 +21,20 @@ from .jobScheduler.trigger.cron import CronTrigger
 from .jobScheduler.utils import get_trigger_next_range
 from django_celery_jobs.tasks.task_synchronous_jobs import sync_celery_native_tasks
 
+User = get_user_model()
 logger = logging.getLogger('django')
 
 
-class IndexView(TemplateView):
-    # template_name = ''
+class JobIndexView(TemplateView):
     template_name = 'index.html'
 
 
-class UserLoginApi(GenericAPIView):
+class JobUserLoginApi(GenericAPIView):
     def post(self, request, *args, **kwargs):
         """ login api """
         login_form = request.data
 
         try:
-            User = get_user_model()
             username_field = User._meta.get_field(User.USERNAME_FIELD)
             credentials = {
                 username_field.name: login_form['username'],
@@ -52,15 +51,19 @@ class UserLoginApi(GenericAPIView):
         return Response(data=None)
 
 
-class UserJwtTokenApi(TokenObtainPairView):
+class JobUserJwtTokenApi(TokenObtainPairView):
     serializer_class = serializers.MyTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
         """ Obtain user jwt token """
+        data = request.data
+        username_key = User.USERNAME_FIELD if User.USERNAME_FIELD in data else 'username'
+        request.data.update({'password': data.get('password'), User.USERNAME_FIELD: data.get(username_key)})
+
         return super().post(request, *args, **kwargs)
 
 
-class DetailUserApi(RetrieveAPIView):
+class DetailJobUserApi(RetrieveAPIView):
     serializer_class = serializers.UserSerializer
 
     def get_object(self):
@@ -70,7 +73,7 @@ class DetailUserApi(RetrieveAPIView):
         return self.request.user
 
 
-class UserLogOutApi(GenericAPIView):
+class JobUserLogOutApi(GenericAPIView):
     def post(self, request, *args, **kwargs):
         """ log out """
         logout(request)

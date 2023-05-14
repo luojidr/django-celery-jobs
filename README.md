@@ -36,9 +36,20 @@ and then add it to your installed apps:
 ``` {.python}
 INSTALLED_APPS = [
     ...,
-    'django_celery_jobs',
+    'django_celery_jobs', 
     ...,
 ]
+
+from django.urls import path
+
+urlpatterns = [
+    ...,
+    path('', include('django_celery_jobs.urls'))
+]
+
+CELERY_APP = '<your_project>.config.celery:celery_app'
+
+
 
 
 ```
@@ -46,20 +57,14 @@ INSTALLED_APPS = [
     
 ```
 
-### Downloading and installing from source
+中间件中 process_response  需要豁免的请求
+from django.urls import reverse
 
-Download the latest version of django-celery-jobs from
-<http://pypi.python.org/pypi/django-celery-jobs>
+exempt_request_path = [
+    reverse('job_index'),
+    '/jobAssets/',
+]
 
-You can install it by doing the following,:
-
-    $ tar xvfz django-celery-jobs-0.0.0.tar.gz
-    $ cd django-celery-jobs-0.0.0
-    $ python setup.py build
-    # python setup.py install
-
-The last command must be executed as a privileged user if you are not
-currently using a virtualenv.
 
 Errors:  
 (1): Celery beat start :  

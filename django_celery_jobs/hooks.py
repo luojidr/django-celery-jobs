@@ -1,10 +1,14 @@
+import re
 import logging
 import traceback
 
 from django.conf import settings
+from django.urls import reverse
 from django.utils.deprecation import MiddlewareMixin
+from django.core.handlers.wsgi import WSGIHandler
 from django.template.response import TemplateResponse
-from django.http import JsonResponse, StreamingHttpResponse, HttpResponseBase, HttpResponseNotFound
+from django.http.response import HttpResponseBase
+from django.http import JsonResponse, StreamingHttpResponse, HttpResponseNotFound
 
 from rest_framework import status
 from rest_framework.exceptions import APIException
@@ -58,16 +62,57 @@ def exception_handler(exc, context):
 
 class MyJWTAuthentication(JWTAuthentication):
     def get_header(self, request):
-        key = api_settings.AUTH_HEADER_TYPES[0]
-        x_token = request.headers.get(key)
+        x_token = request.META.get(api_settings.AUTH_HEADER_NAME)  # Auth Header: Bearer eyjuew68sjdj
+
+        if x_token:
+            return x_token
+
+        auth_header_key = api_settings.AUTH_HEADER_TYPES[0]
+        x_token = request.headers.get(auth_header_key) or request.META.get(auth_header_key)
 
         if not x_token:
             raise InvalidToken('Path: %s not token in headers', request.path)
 
-        return (key + " " + x_token).encode('utf-8')
+        return (auth_header_key + " " + x_token).encode('utf-8')
 
 
-class ResponseMiddleware(MiddlewareMixin):
+class JobResponseMiddleware(MiddlewareMixin):
+    JSON_CONTENT_TYPE = 'application/json'
+    resolve_request = WSGIHandler.resolve_request
+
+    @property
+    def exempt_request_path(self):
+        attr = "_exempt_request_path"
+
+        if attr not in self.__dict__:
+            exempt_path_list = [
+                reverse('job_index'),
+                reverse('job_login'),
+                reverse('job_asserts', kwargs=dict(path=''))
+            ]
+            self.__dict__[attr] = exempt_path_list
+
+        return self.__dict__[attr]
+
+    def _get_response(self, request):
+        callback, callback_args, callback_kwargs = self.resolve_request(request)
+        response = callback(request, *callback_args, **callback_kwargs)
+
+        if hasattr(response, 'render') and callable(response.render):
+            response = response.render()
+
+        return response
+
+    def process_request(self, request):
+        path = request.path
+
+        if any([path.startswith(prefix_path) for prefix_path in self.exempt_request_path]):
+            return self._get_response(request)
+
+        authenticator = MyJWTAuthentication()
+        request.user, _ = authenticator.authenticate(request)
+        return self._get_response(request)
+
     def process_response(self, request, response):
         if isinstance(response, (StreamingHttpResponse, TemplateResponse, HttpResponseNotFound)):
             return response
@@ -75,29 +120,40 @@ class ResponseMiddleware(MiddlewareMixin):
         if isinstance(response, HttpResponseBase) and response.get("Content-Disposition"):
             return response
 
-        if 'application/json' not in response.headers.get('Content-Type'):
+        try:
+            content_type = response.headers.get('Content-Type')
+        except AttributeError:
+            content_type = response.accepted_media_type
+
+            if not content_type:
+                if re.compile(rb"<!DOCTYPE").search(response.content):
+                    content_type = 'text/plain'
+                else:
+                    content_type = request.META.get('CONTENT_TYPE')  # Or request.headers.get('CONTENT_TYPE')
+
+        if self.JSON_CONTENT_TYPE not in content_type:
             return response
 
-        data = dict(code=200, message='ok', data=None)
+        data = dict(code=200, message='success', data=None)
         raw_result = response.data
+        status_code = response.status_code
 
         # Api response
-        if status.is_success(response.status_code):
+        if status.is_success(status_code):
             data.update(data=raw_result)
         else:
             data.update(
-                code=raw_result.pop("code", None) or response.status_code,
-                message=str(raw_result.pop("message", ""))
+                code=raw_result.pop("code", None) or status_code,
+                message=str(raw_result.pop("message", "success"))
             )
 
         return JsonResponse(data=data)
 
 
 setattr(drf_views, 'exception_handler', exception_handler)
-JWTAuthentication.get_header = MyJWTAuthentication.get_header
+middleware = 'django_celery_jobs.hooks.JobResponseMiddleware'
 
-middleware = 'django_celery_jobs.hooks.ResponseMiddleware'
 if middleware not in settings.MIDDLEWARE:
-    settings.MIDDLEWARE.append(middleware)
+    settings.MIDDLEWARE.insert(0, middleware)
 
 
