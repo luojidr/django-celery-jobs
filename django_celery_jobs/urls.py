@@ -14,7 +14,7 @@ urlpatterns = [
     re_path('^jobAssets/(?P<path>.*)$', serve, {'document_root': DOCUMENT_ROOT}, name='job_asserts'),
 
     re_path(f"^job-scheduler/user/login$", view=views.JobUserLoginApi.as_view(), name='job_login'),
-    re_path(f"^{API_PREFIX}/user/token$", view=views.JobUserJwtTokenApi.as_view(), name='api_job_token_obtain'),
+    re_path(f"^job-scheduler/user/token$", view=views.JobUserJwtTokenApi.as_view(), name='job_token_obtain'),
     re_path(f"^{API_PREFIX}/user/info$", view=views.DetailJobUserApi.as_view(), name='api_job_user_info'),
     re_path(f"^{API_PREFIX}/user/logout$", view=views.JobUserLogOutApi.as_view(), name='api_job_user_logout'),
 

@@ -94,6 +94,7 @@ class JobResponseMiddleware(MiddlewareMixin):
             exempt_path_list = [
                 reverse('job_index'),
                 reverse('job_login'),
+                reverse('job_token_obtain'),
                 reverse('job_asserts', kwargs=dict(path=''))
             ]
             self.__dict__[attr] = exempt_path_list
