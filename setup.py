@@ -24,7 +24,7 @@ def load_requirements(filename):
 if os.path.exists('README.md'):
     long_description = codecs.open('README.md', 'r', 'utf-8').read()
 else:
-    long_description = f'See http://pypi.python.org/pypi/{NAME}'
+    long_description = f'See https://pypi.python.org/pypi/{NAME}'
 
 
 setup(
