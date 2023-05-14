@@ -26,6 +26,12 @@ logger = logging.getLogger('django')
 
 
 class JobIndexView(TemplateView):
+    """
+    class IndexView(View):
+        def get(self, request, *args, **kwargs):
+            template_name = 'index.html'
+            return render(request, template_name)
+    """
     template_name = 'index.html'
 
 

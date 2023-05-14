@@ -1,12 +1,14 @@
 import re
 import logging
 import traceback
+from pathlib import Path
 
 from django.conf import settings
 from django.urls import reverse
 from django.utils.deprecation import MiddlewareMixin
 from django.core.handlers.wsgi import WSGIHandler
 from django.template.response import TemplateResponse
+from django.template.backends.django import DjangoTemplates
 from django.http.response import HttpResponseBase
 from django.http import JsonResponse, StreamingHttpResponse, HttpResponseNotFound
 
@@ -58,6 +60,10 @@ def exception_handler(exc, context):
 
     response = Response(data=dict(code=code, message=message), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     return response
+
+
+class MyDjangoTemplates(DjangoTemplates):
+    pass
 
 
 class MyJWTAuthentication(JWTAuthentication):
@@ -123,7 +129,7 @@ class JobResponseMiddleware(MiddlewareMixin):
         try:
             content_type = response.headers.get('Content-Type')
         except AttributeError:
-            content_type = response.accepted_media_type
+            content_type = getattr(response, 'accepted_media_type', None)
 
             if not content_type:
                 if re.compile(rb"<!DOCTYPE").search(response.content):
@@ -152,8 +158,22 @@ class JobResponseMiddleware(MiddlewareMixin):
 
 setattr(drf_views, 'exception_handler', exception_handler)
 middleware = 'django_celery_jobs.hooks.JobResponseMiddleware'
+template_backend = 'django_celery_jobs.hooks.MyDjangoTemplates'
 
 if middleware not in settings.MIDDLEWARE:
     settings.MIDDLEWARE.insert(0, middleware)
 
-
+if not any([True for template in settings.TEMPLATES if template['BACKEND'] == template_backend]):
+    settings.TEMPLATES.insert(0, {
+        'BACKEND': template_backend,
+        'DIRS': [str(Path(__file__).parent / 'templates')],
+        'APP_DIRS': False,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        }
+    })
