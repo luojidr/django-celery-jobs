@@ -9,9 +9,9 @@ from django.contrib.auth.models import AnonymousUser
 from django.contrib.auth import get_user_model, authenticate
 from django.core.exceptions import PermissionDenied
 
-
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.generics import GenericAPIView
 from rest_framework.generics import RetrieveAPIView, ListAPIView, UpdateAPIView, CreateAPIView
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -23,6 +23,7 @@ from django_celery_jobs.tasks.task_synchronous_jobs import sync_celery_native_ta
 
 User = get_user_model()
 logger = logging.getLogger('django')
+PageNumberPagination.page_size_query_param = 'pageSize'
 
 
 class JobIndexView(TemplateView):
@@ -87,6 +88,7 @@ class JobUserLogOutApi(GenericAPIView):
 
 
 class ListNativeJobApi(ListAPIView):
+    pagination_class = PageNumberPagination
     serializer_class = serializers.CeleryNativeTaskSerializer
 
     def get_queryset(self):
@@ -127,6 +129,7 @@ class CronExpressionApi(APIView):
 
 
 class ListJobPeriodicApi(ListAPIView):
+    pagination_class = PageNumberPagination
     serializer_class = serializers.JobPeriodicSerializer
 
     def get_queryset(self):

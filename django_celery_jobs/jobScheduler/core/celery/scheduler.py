@@ -3,6 +3,7 @@ import string
 import random
 import logging
 import platform
+import warnings
 import traceback
 from datetime import datetime
 
@@ -10,11 +11,17 @@ from celery.beat import _evaluate_entry_args, _evaluate_entry_kwargs
 from celery.utils import cached_property
 from celery.schedules import schedstate
 
+import django
 from django.utils import timezone
 from django.db import transaction
 from django.db.models.base import ModelBase
 from django.core.cache import caches
-from django.core.cache.backends.redis import RedisCache
+
+try:
+    from django.core.cache.backends.redis import RedisCache
+except ModuleNotFoundError:
+    warnings.warn("The version of django you installed is %s" % django.get_version())
+    from django_redis.cache import RedisCache
 
 from django_celery_beat.schedulers import DatabaseScheduler
 
